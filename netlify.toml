@@ -1,0 +1,34 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# ── Static asset caching ──────────────────────────────────────────────────────
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ── Security headers for every response ───────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Prevents the JWT/session from being exfiltrated via a framed page
+    X-Frame-Options = "DENY"
+    # Stops MIME-type sniffing attacks
+    X-Content-Type-Options = "nosniff"
+    # Forces HTTPS for 2 years, including subdomains
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    # Leaks only the origin (no full URL) to third-party requests
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Disable sensitive browser features that this app does not use
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    # ── Content-Security-Policy ───────────────────────────────────────────────
+    # 'unsafe-eval' is intentionally omitted — Vite production bundles do not
+    # need it. 'unsafe-inline' for style-src is required by Tailwind CSS.
+    # api.dicebear.com is whitelisted for avatar images.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co https://api.dicebear.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"

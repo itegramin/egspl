@@ -1,0 +1,6 @@
+{
+  "name": "Client Service Management Platform",
+  "description": "Comprehensive client request management platform supporting technical support issues, holding (wallet) deposit/withdrawal update requests, RBAC permissions matrix, operator routing, and analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

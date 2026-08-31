@@ -1,0 +1,180 @@
+@import "tailwindcss";
+
+@theme {
+  --color-indigo-50: var(--color-primary-50, #ecfdf6);
+  --color-indigo-100: var(--color-primary-100, #d0fbe7);
+  --color-indigo-200: var(--color-primary-200, #a3f5d4);
+  --color-indigo-300: var(--color-primary-300, #6ce8bc);
+  --color-indigo-400: var(--color-primary-400, #37d3a2);
+  --color-indigo-500: var(--color-primary-500, #12b887);
+  --color-indigo-600: var(--color-primary-600, #059a6f);
+  --color-indigo-700: var(--color-primary-700, #047c5a);
+  --color-indigo-800: var(--color-primary-800, #066349);
+  --color-indigo-900: var(--color-primary-900, #07503d);
+  --color-indigo-950: var(--color-primary-950, #042b20);
+
+  --color-primary-50: var(--color-primary-50, #ecfdf6);
+  --color-primary-100: var(--color-primary-100, #d0fbe7);
+  --color-primary-200: var(--color-primary-200, #a3f5d4);
+  --color-primary-300: var(--color-primary-300, #6ce8bc);
+  --color-primary-400: var(--color-primary-400, #37d3a2);
+  --color-primary-500: var(--color-primary-500, #12b887);
+  --color-primary-600: var(--color-primary-600, #059a6f);
+  --color-primary-700: var(--color-primary-700, #047c5a);
+  --color-primary-800: var(--color-primary-800, #066349);
+  --color-primary-900: var(--color-primary-900, #07503d);
+  --color-primary-950: var(--color-primary-950, #042b20);
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --color-primary-50: #ecfdf6;
+  --color-primary-100: #d0fbe7;
+  --color-primary-200: #a3f5d4;
+  --color-primary-300: #6ce8bc;
+  --color-primary-400: #37d3a2;
+  --color-primary-500: #12b887;
+  --color-primary-600: #059a6f;
+  --color-primary-700: #047c5a;
+  --color-primary-800: #066349;
+  --color-primary-900: #07503d;
+  --color-primary-950: #042b20;
+  --brand-primary: #059669;
+  --brand-primary-rgb: 5, 150, 105;
+  --app-border-radius: 0.75rem;
+  --brand-glow-opacity: 0.18;
+  --app-font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* ── Refined Emerald design tokens ─────────────────────────────── */
+  --grad-brand: linear-gradient(135deg, var(--color-primary-700, #047c5a), var(--color-primary-500, #12b887), var(--color-primary-400, #37d3a2));
+  --grad-brand-deep: linear-gradient(135deg, #065f46 0%, #059669 45%, #0d9488 100%);
+  --grad-amber: linear-gradient(135deg, #d97706, #f59e0b);
+  --gold: #f59e0b;
+  --glass-border: rgba(255, 255, 255, 0.14);
+}
+
+/* Brand gradient utility — follows the active theme preset */
+.bg-grad-brand { background-image: var(--grad-brand); }
+.bg-grad-brand-deep { background-image: var(--grad-brand-deep); }
+.bg-grad-amber { background-image: var(--grad-amber); }
+
+/* Glassmorphism surfaces */
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+}
+.dark .glass,
+.glass-dark {
+  background: rgba(15, 23, 42, 0.62);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+/* Gradient text */
+.text-gradient {
+  background-image: var(--grad-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gold-gradient {
+  background-image: var(--grad-amber);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Shimmer skeleton */
+@keyframes egramin-shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, rgba(148,163,184,0.18) 25%, rgba(148,163,184,0.38) 50%, rgba(148,163,184,0.18) 75%);
+  background-size: 800px 100%;
+  animation: egramin-shimmer 1.4s infinite linear;
+}
+
+/* Gentle float for decorative elements */
+@keyframes egramin-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.animate-float { animation: egramin-float 5s ease-in-out infinite; }
+
+/* Soft pulse ring (used behind accent icons) */
+@keyframes egramin-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(var(--brand-primary-rgb), 0.35); }
+  70% { box-shadow: 0 0 0 12px rgba(var(--brand-primary-rgb), 0); }
+  100% { box-shadow: 0 0 0 0 rgba(var(--brand-primary-rgb), 0); }
+}
+.animate-pulse-ring { animation: egramin-pulse-ring 2.4s ease-out infinite; }
+
+/* Surface tones in dark mode */
+html.dark[data-surface="oled"] body {
+  background-color: #000000 !important;
+}
+
+html.dark[data-surface="stone"] body {
+  background-color: #0c0a09 !important;
+}
+
+@layer base {
+  body {
+    @apply antialiased text-slate-900 bg-slate-50 dark:bg-slate-950 dark:text-slate-100 min-h-screen transition-colors duration-200;
+    font-family: var(--app-font-family);
+  }
+}
+
+/* High Contrast Mode Overrides */
+html.theme-high-contrast {
+  --brand-glow-opacity: 0;
+}
+html.theme-high-contrast .dark table,
+html.theme-high-contrast .dark div[class*="border-slate-800"],
+html.theme-high-contrast .dark div[class*="border-slate-700"] {
+  border-color: #334155 !important;
+}
+
+/* Density overrides */
+.density-compact table th,
+.density-compact table td {
+  padding-top: 0.45rem !important;
+  padding-bottom: 0.45rem !important;
+}
+
+/* Brand glow utility */
+.brand-glow {
+  box-shadow: 0 0 25px -5px rgba(var(--brand-primary-rgb), var(--brand-glow-opacity));
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.4);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}

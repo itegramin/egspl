@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy — browser-enforced fallback.
+      Server-level CSP headers (netlify.toml / vercel.json / nginx.conf) take
+      precedence in production; this meta tag covers local dev and any CDN
+      that does not forward custom headers.
+
+      Directives explained:
+        default-src 'self'          — block all unlisted origins by default
+        script-src  'self' 'unsafe-inline'
+                                    — Vite dev needs inline scripts; production
+                                      builds are bundled so 'unsafe-inline' is
+                                      harmless there. 'unsafe-eval' is omitted.
+        style-src   'self' 'unsafe-inline' fonts.googleapis.com
+                                    — Tailwind inlines styles; Google Fonts CSS
+        font-src    'self' fonts.gstatic.com data:
+        img-src     'self' data: blob: https://images.unsplash.com
+                    https://*.supabase.co https://api.dicebear.com
+                                    — avatar images from DiceBear
+        connect-src 'self' https://*.supabase.co wss://*.supabase.co
+                    https://generativelanguage.googleapis.com
+                                    — Supabase REST/realtime, Gemini API
+        frame-ancestors 'none'      — prevents clickjacking in iframes
+        object-src  'none'          — blocks Flash / legacy plugins
+        base-uri    'self'          — prevents base-tag injection
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline';
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com data:;
+      img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co https://api.dicebear.com;
+      connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com;
+      object-src 'none';
+      base-uri 'self';
+    " />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <title>ServiceCore — Client Service & CRM Management Platform</title>
+    <meta name="description" content="Enterprise Client Service Management Platform, CRM Directory, Support Tickets, and Holding Fund Governance." />
+    <meta property="og:title" content="ServiceCore — Client Service & CRM Management Platform" />
+    <meta property="og:description" content="Enterprise Client Service Management Platform, CRM Directory, Support Tickets, and Holding Fund Governance." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
