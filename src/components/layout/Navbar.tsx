@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
+import { useSessionTimer, SESSION_TIMEOUT_SECONDS } from '../../context/SessionContext';
 import { RoleBadge } from '../common/Badge';
 import { formatTimeIST } from '../../lib/dateUtils';
 import {
@@ -32,6 +33,7 @@ import {
   Home,
   Menu,
   Palette,
+  Timer,
 } from 'lucide-react';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
 import { AnimatePresence, motion } from 'motion/react';
@@ -58,6 +60,8 @@ export const Navbar: React.FC<NavbarProps> = () => {
     toggleMobileSidebar,
     toast,
   } = useApp();
+
+  const { remainingSeconds, isActive, resetTimer } = useSessionTimer();
 
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -92,6 +96,13 @@ export const Navbar: React.FC<NavbarProps> = () => {
       } else if (sessionResult.status === 'rejected') {
         console.error('Session refresh rejected:', sessionResult.reason);
         errors.push('auth session');
+      }
+
+      // A successful auth token refresh re-issues the JWT and rewrites the
+      // auth cookie with a fresh 15-min Max-Age — so reset the in-app session
+      // countdown to match the newly extended cookie lifetime.
+      if (sessionResult.status === 'fulfilled' && sessionResult.value.success) {
+        resetTimer();
       }
 
       setLastSyncedAt(new Date());
@@ -158,6 +169,27 @@ export const Navbar: React.FC<NavbarProps> = () => {
 
         {/* Right: Actions, theme toggle, notifications, and profile */}
         <div className="flex items-center gap-2.5 sm:gap-3">
+          {/* Session Countdown Timer */}
+          {isActive && (
+            <div
+              id="session-countdown"
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold tabular-nums transition-colors ${
+                remainingSeconds <= 120
+                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                  : remainingSeconds <= 300
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+              title={`Session expires in ${Math.floor(remainingSeconds / 60)}m ${remainingSeconds % 60}s. Database activity or the Sync button extends it.`}
+            >
+              <Timer className="w-3.5 h-3.5" />
+              <span>
+                {String(Math.floor(remainingSeconds / 60)).padStart(2, '0')}:
+                {String(remainingSeconds % 60).padStart(2, '0')}
+              </span>
+            </div>
+          )}
+
           {/* Live Database Sync / Refresh Button */}
           <button
             id="navbar-manual-sync-btn"
@@ -303,7 +335,7 @@ export const Navbar: React.FC<NavbarProps> = () => {
                           Executive Governance
                         </div>
 
-                        {/* Admin-only Theme Customizer Launcher */}
+                        {/* Theme Customizer Launcher */}
                         <button
                           id="profile-theme-customizer-btn"
                           onClick={() => {
@@ -317,7 +349,7 @@ export const Navbar: React.FC<NavbarProps> = () => {
                             <span>Theme & Branding</span>
                           </div>
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-emerald-200/70 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300">
-                            ADMIN
+                            ALL ROLES
                           </span>
                         </button>
 
@@ -379,6 +411,19 @@ export const Navbar: React.FC<NavbarProps> = () => {
                        =================================================== */}
                     {userRole === 'operator' && (
                       <>
+                        {/* Theme Customizer Launcher (all roles) */}
+                        <button
+                          id="profile-theme-customizer-btn"
+                          onClick={() => {
+                            setIsProfileDropdownOpen(false);
+                            openThemeModal();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl transition-colors mb-1"
+                        >
+                          <Palette className="w-4 h-4 text-emerald-500" />
+                          <span>Theme & Branding</span>
+                        </button>
+
                         <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           Staff Work Queues
                         </div>
@@ -430,6 +475,19 @@ export const Navbar: React.FC<NavbarProps> = () => {
                        =================================================== */}
                     {userRole === 'client' && (
                       <>
+                        {/* Theme Customizer Launcher (all roles) */}
+                        <button
+                          id="profile-theme-customizer-btn"
+                          onClick={() => {
+                            setIsProfileDropdownOpen(false);
+                            openThemeModal();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl transition-colors mb-1"
+                        >
+                          <Palette className="w-4 h-4 text-emerald-500" />
+                          <span>Theme & Branding</span>
+                        </button>
+
                         <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                           Quick Client Actions
                         </div>
