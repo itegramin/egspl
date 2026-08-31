@@ -24,6 +24,7 @@ import { HoldingRequestsView } from './components/requests/HoldingRequestsView';
 import { RequestList } from './components/requests/RequestList';
 import { ClientDirectory } from './components/crm/ClientDirectory';
 import { AnalyticsView } from './components/analytics/AnalyticsView';
+import { RolePermissionMatrix } from './components/rbac/RolePermissionMatrix';
 import { AuditLogsView } from './components/audit/AuditLogsView';
 import { NotificationLogsView } from './components/notifications/NotificationLogsView';
 import { SettingsView } from './components/settings/SettingsView';
@@ -76,6 +77,8 @@ const MainLayout: React.FC = () => {
         return <ClientDirectory />;
       case 'analytics':
         return <AnalyticsView />;
+      case 'rbac':
+        return <RolePermissionMatrix />;
       case 'audit-logs':
         return <AuditLogsView />;
       case 'notifications':
