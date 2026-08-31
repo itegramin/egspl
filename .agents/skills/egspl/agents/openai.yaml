@@ -1,0 +1,6 @@
+interface:
+  display_name: "Egspl"
+  short_description: "Repo-specific patterns and workflows for egspl"
+  default_prompt: "Use the egspl repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
