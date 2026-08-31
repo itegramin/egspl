@@ -3,11 +3,13 @@ import { User, UserRole } from '../types';
 import { getStoredUsers, saveUsers, logAuditEvent, clearSensitiveStorage } from '../lib/storage';
 import { fetchUsersFromSupabase, supabase, mapUserToDb, deleteUserFromSupabase, saveAuditLogToSupabase } from '../lib/supabase';
 import { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
+import { useNavigate } from 'react-router-dom';
 
 export type AuthModalMode = 'signin' | 'signup' | 'magic' | 'reset';
 
-// Auth state is derived exclusively from Supabase's in-memory session
-// (no localStorage token — see supabase.ts persistSession: false).
+// Auth state is derived from Supabase's cookie-persisted session
+// (session is stored in Secure, SameSite=Lax cookies — see supabase.ts).
+// The session survives page reloads; inactivity is bounded by SessionContext.
 
 interface AuthContextType {
   user: User | null;
@@ -65,6 +67,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // token must never be used in any authorization context.
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const navigate = useNavigate();
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
   // Auth state is NOT seeded from localStorage — it is populated entirely from
@@ -567,11 +570,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserState(null);
     setToken('');
     // Wipe all sensitive data from localStorage (clearSensitiveStorage also
-    // removes csmp_current_view, csmp_current_page and legacy auth keys)
+    // removes legacy auth keys) and route back to the public home page.
     clearSensitiveStorage();
-    if (typeof window !== 'undefined') {
-      window.location.hash = '#/home';
-    }
+    navigate('/', { replace: true });
   };
 
 

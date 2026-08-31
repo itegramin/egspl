@@ -51,6 +51,8 @@ import {
 } from '../lib/supabase';
 import { ThemeConfig, getStoredTheme, applyTheme, DEFAULT_THEME } from '../lib/theme';
 import { useAuth } from './AuthContext';
+import { useSessionTimer } from './SessionContext';
+import { useLocation, useNavigate } from 'react-router-dom';
 import confetti from 'canvas-confetti';
 
 interface AppContextType {
@@ -212,6 +214,7 @@ const VALID_PAGES: PageId[] = [
   'analytics',
   'rbac',
   'audit-logs',
+  'notifications',
   'settings',
 ];
 
@@ -232,131 +235,85 @@ const PAGE_ALIASES: Record<string, PageId> = {
   'audit-trail': 'audit-logs',
 };
 
-function getRouteFromHashOrStorage(): { view: AppView; page: PageId } {
-  if (typeof window === 'undefined') {
+function getRouteFromPathname(pathname: string): { view: AppView; page: PageId } {
+  const path = pathname.replace(/^\/+/, '').trim().toLowerCase().split('?')[0];
+
+  if (path === '' || path === 'home' || path === 'public') {
     return { view: 'home', page: 'dashboard' };
   }
-
-  const hashRaw = window.location.hash.replace(/^#\/?/, '').trim().toLowerCase();
-  const hash = hashRaw.split('?')[0];
-
-  if (hash === 'home' || hash === 'public') {
-    return { view: 'home', page: 'dashboard' };
-  }
-  if (hash === 'auth' || hash === 'login' || hash === 'signin' || hash === 'signup') {
+  if (path === 'auth' || path === 'login' || path === 'signin' || path === 'signup') {
     return { view: 'auth', page: 'dashboard' };
   }
-  if (PAGE_ALIASES[hash]) {
-    return { view: 'app', page: PAGE_ALIASES[hash] };
+  if (PAGE_ALIASES[path]) {
+    return { view: 'app', page: PAGE_ALIASES[path] };
   }
-  if (VALID_PAGES.includes(hash as PageId)) {
-    return { view: 'app', page: hash as PageId };
-  }
-
-  // Fallback to localStorage
-  try {
-    const savedView = localStorage.getItem('csmp_current_view') as AppView | null;
-    const savedPage = localStorage.getItem('csmp_current_page') as PageId | null;
-
-    if (savedView === 'app') {
-      const page = savedPage && VALID_PAGES.includes(savedPage) ? savedPage : 'dashboard';
-      return { view: 'app', page };
-    }
-    if (savedView === 'auth') {
-      return { view: 'auth', page: 'dashboard' };
-    }
-    if (savedView === 'home') {
-      return { view: 'home', page: 'dashboard' };
-    }
-  } catch {
-    // fallback
+  if (VALID_PAGES.includes(path as PageId)) {
+    return { view: 'app', page: path as PageId };
   }
 
   return { view: 'home', page: 'dashboard' };
 }
 
-function syncRouteToUrl(view: AppView, page: PageId) {
-  if (typeof window === 'undefined') return;
-
-  let targetHash = '';
-  if (view === 'home') {
-    targetHash = '#/home';
-  } else if (view === 'auth') {
-    targetHash = '#/auth';
-  } else {
-    targetHash = `#/${page}`;
-  }
-
-  try {
-    localStorage.setItem('csmp_current_view', view);
-    localStorage.setItem('csmp_current_page', page);
-  } catch { }
-
-  if (window.location.hash !== targetHash) {
-    window.history.replaceState(null, '', targetHash);
-  }
+function routeToPath(view: AppView, page: PageId): string {
+  if (view === 'home') return '/';
+  if (view === 'auth') return '/auth';
+  return `/${page}`;
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, allUsers, isAuthenticated, session } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  // Auto-extend the auth session whenever the user interacts with the database.
+  const { extendSession } = useSessionTimer();
 
   // One-time eviction: purge all sensitive legacy caches from localStorage.
   React.useEffect(() => {
     clearSensitiveStorage();
   }, []);
 
-  const [currentView, setCurrentViewState] = useState<AppView>(() => getRouteFromHashOrStorage().view);
-  const [currentPage, setCurrentPageState] = useState<PageId>(() => getRouteFromHashOrStorage().page);
+  const [currentView, setCurrentViewState] = useState<AppView>(() => getRouteFromPathname(window.location.pathname).view);
+  const [currentPage, setCurrentPageState] = useState<PageId>(() => getRouteFromPathname(window.location.pathname).page);
 
 
   const setCurrentView = useCallback((view: AppView) => {
     setCurrentViewState(view);
-    syncRouteToUrl(view, currentPage);
-  }, [currentPage]);
+    navigate(routeToPath(view, currentPage), { replace: true });
+  }, [navigate, currentPage]);
 
   const setCurrentPage = useCallback((page: PageId) => {
     setCurrentPageState(page);
     setCurrentViewState('app');
-    syncRouteToUrl('app', page);
-  }, []);
+    navigate(routeToPath('app', page), { replace: true });
+  }, [navigate]);
 
   const goToDashboard = useCallback(() => {
     if (isAuthenticated && user) {
       setCurrentViewState('app');
       setCurrentPageState('dashboard');
-      syncRouteToUrl('app', 'dashboard');
+      navigate('/dashboard', { replace: true });
     } else {
       setCurrentViewState('auth');
-      syncRouteToUrl('auth', 'dashboard');
+      navigate('/auth', { replace: true });
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, navigate]);
 
   const goToHome = useCallback(() => {
     setCurrentViewState('home');
-    syncRouteToUrl('home', currentPage);
-  }, [currentPage]);
+    navigate('/', { replace: true });
+  }, [navigate]);
 
   const goToAuth = useCallback(() => {
     setCurrentViewState('auth');
-    syncRouteToUrl('auth', currentPage);
-  }, [currentPage]);
+    navigate('/auth', { replace: true });
+  }, [navigate]);
 
-  // Listen to browser hash changes (e.g. Back / Forward button, manual URL changes)
+  // Listen to browser route changes (e.g. Back / Forward button, manual URL changes)
   useEffect(() => {
-    const handleHashChange = () => {
-      const route = getRouteFromHashOrStorage();
-      setCurrentViewState(route.view);
-      setCurrentPageState(route.page);
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  // Sync initial state to URL on mount
-  useEffect(() => {
-    syncRouteToUrl(currentView, currentPage);
-  }, []);
+    const route = getRouteFromPathname(location.pathname);
+    setCurrentViewState(route.view);
+    setCurrentPageState(route.page);
+  }, [location.pathname]);
   // All sensitive state starts empty — populated by syncWithSupabase after auth succeeds.
   // Do NOT initialize from localStorage on cold start: unauthenticated visits must see nothing.
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
@@ -714,7 +671,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Save to Supabase (triggers Realtime on other sessions/devices)
-    saveNotificationToSupabase(newNotif).catch(() => { });
+    saveNotificationToSupabase(newNotif)
+      .then(() => extendSession())
+      .catch(() => { });
   };
 
   const recordAudit = (
@@ -1020,6 +979,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const persistRequest = async (req: ServiceRequest): Promise<boolean> => {
     try {
       await saveRequestToSupabase(req);
+      // A successful write is real DB activity — extend the session (throttled).
+      extendSession();
       return true;
     } catch (err: any) {
       console.warn('Request DB sync failed:', err.message);
@@ -1436,7 +1397,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (activeRequest?.id === requestId) setActiveRequest(null);
 
     // Delete in Supabase
-    deleteRequestFromSupabase(requestId).catch(() => { });
+    deleteRequestFromSupabase(requestId)
+      .then(() => extendSession())
+      .catch(() => { });
 
     if (target) {
       recordAudit('DELETED_REQUEST', 'request', requestId, `Deleted request ${target.ticketNumber}`);
@@ -1652,7 +1615,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications(updated);
     saveNotifications(updated);
 
-    markNotificationReadInSupabase(id).catch(() => { });
+    markNotificationReadInSupabase(id)
+      .then(() => extendSession())
+      .catch(() => { });
   };
 
   const markAllNotificationsAsRead = () => {
@@ -1664,7 +1629,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveNotifications(updated);
 
     if (user) {
-      markAllNotificationsReadInSupabase(user.id).catch(() => { });
+      markAllNotificationsReadInSupabase(user.id)
+        .then(() => extendSession())
+        .catch(() => { });
     }
     toast('All notifications marked as read', 'info');
   };

@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { NavLink } from 'react-router-dom';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Master page catalogue — defines icon + label for every possible page ID.
@@ -137,23 +138,15 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
 export const Sidebar: React.FC = () => {
   const { user } = useAuth();
   const {
-    currentPage,
-    setCurrentPage,
     requests,
     unreadNotifCount,
     isMobileSidebarOpen,
     closeMobileSidebar,
     themeConfig,
   } = useApp();
-
   const userRole = user?.role || 'client';
   const allowedPageIds = ROLE_ALLOWED_PAGES[userRole] || ROLE_ALLOWED_PAGES.client;
   const visibleNavItems = ALL_NAV_ITEMS.filter(item => allowedPageIds.includes(item.id));
-
-  const handleNavClick = (pageId: PageId) => {
-    setCurrentPage(pageId);
-    closeMobileSidebar();
-  };
 
   const SidebarContent = (
     <div className="p-4 flex flex-col justify-between h-full">
@@ -195,53 +188,60 @@ export const Sidebar: React.FC = () => {
         <nav className="space-y-1">
           {visibleNavItems.map(item => {
             const Icon = item.icon;
-            const isActive = currentPage === item.id;
             const count = item.badgeCount
               ? item.badgeCount(requests, user, unreadNotifCount)
               : 0;
 
             return (
-              <button
+              <NavLink
                 key={item.id}
                 id={`sidebar-nav-item-${item.id}`}
-                onClick={() => handleNavClick(item.id)}
-                className={`relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group overflow-hidden ${
-                  isActive ? 'text-white' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                }`}
+                to={`/${item.id}`}
+                end={item.id === 'dashboard'}
+                onClick={closeMobileSidebar}
+                className={({ isActive }) =>
+                  `relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group overflow-hidden ${
+                    isActive ? 'text-white' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`
+                }
               >
-                {/* Animated active pill that slides between nav items */}
-                {isActive && (
-                  <motion.span
-                    layoutId="sidebar-active-pill"
-                    className="absolute inset-0 bg-grad-brand shadow-lg shadow-emerald-700/30"
-                    transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-                  />
+                {({ isActive }) => (
+                  <>
+                    {/* Animated active pill that slides between nav items */}
+                    {isActive && (
+                      <motion.span
+                        layoutId="sidebar-active-pill"
+                        className="absolute inset-0 bg-grad-brand shadow-lg shadow-emerald-700/30"
+                        transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                      />
+                    )}
+
+                    <div className="relative z-10 flex items-center gap-3 truncate">
+                      <Icon
+                        className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
+                          isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                        }`}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </div>
+
+                    <div className="relative z-10 flex items-center gap-1.5 shrink-0 ml-2">
+                      {count > 0 && (
+                        <span
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            isActive
+                              ? 'bg-white text-emerald-700'
+                              : 'bg-slate-800 text-emerald-300 border border-slate-700'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                      {isActive && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
+                    </div>
+                  </>
                 )}
-
-                <div className="relative z-10 flex items-center gap-3 truncate">
-                  <Icon
-                    className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
-                      isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                    }`}
-                  />
-                  <span className="truncate">{item.label}</span>
-                </div>
-
-                <div className="relative z-10 flex items-center gap-1.5 shrink-0 ml-2">
-                  {count > 0 && (
-                    <span
-                      className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        isActive
-                          ? 'bg-white text-emerald-700'
-                          : 'bg-slate-800 text-emerald-300 border border-slate-700'
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  )}
-                  {isActive && <ChevronRight className="w-3.5 h-3.5 opacity-70" />}
-                </div>
-              </button>
+              </NavLink>
             );
           })}
         </nav>
@@ -250,7 +250,7 @@ export const Sidebar: React.FC = () => {
         <div className="mt-4 pt-3 border-t border-slate-800">
           <a
             id="sidebar-public-home-btn"
-            href="#/home"
+            href="/"
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all group"

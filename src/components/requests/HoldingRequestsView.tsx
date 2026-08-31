@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { HoldingDepositRequest, HoldingWithdrawRequest } from '../../types';
 import { StatusBadge, PriorityBadge, DeletionPendingBadge } from '../common/Badge';
 import { formatShortDateIST, formatDateIST } from '../../lib/dateUtils';
+import { THEME_PRESETS } from '../../lib/theme';
 import {
   WalletCards,
   ArrowDownRight,
@@ -29,8 +30,15 @@ export const HoldingRequestsView: React.FC = () => {
     openCreateModal,
     triggerExportCSV,
     permissions,
+    themeConfig,
   } = useApp();
   const { user } = useAuth();
+
+  // Resolve theme primary color for dynamic styling
+  const activeHex =
+    themeConfig.preset === 'custom'
+      ? themeConfig.customPrimaryHex
+      : THEME_PRESETS[themeConfig.preset as keyof typeof THEME_PRESETS]?.primaryHex || '#059669';
 
   const [activeTab, setActiveTab] = useState<'all' | 'deposits' | 'withdrawals'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,7 +84,13 @@ export const HoldingRequestsView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
+            <span
+              className="p-2 rounded-xl"
+              style={{
+                backgroundColor: `color-mix(in srgb, ${activeHex} 12%, transparent)`,
+                color: activeHex,
+              }}
+            >
               <WalletCards className="w-5 h-5" />
             </span>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
@@ -94,7 +108,8 @@ export const HoldingRequestsView: React.FC = () => {
               <button
                 id="log-deposit-slip-btn"
                 onClick={() => openCreateModal('deposit')}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all active:scale-98"
+                className="px-3.5 py-2 rounded-xl text-white text-xs sm:text-sm font-bold shadow-md flex items-center gap-1.5 transition-all active:scale-98"
+                style={{ backgroundColor: activeHex, boxShadow: `0 4px 14px -3px ${activeHex}40` }}
               >
                 <ArrowDownRight className="w-4 h-4" />
                 <span>Deposit Update</span>
@@ -103,7 +118,8 @@ export const HoldingRequestsView: React.FC = () => {
               <button
                 id="request-withdraw-btn"
                 onClick={() => openCreateModal('withdraw')}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-emerald-600/20 flex items-center gap-1.5 transition-all active:scale-98"
+                className="px-3.5 py-2 rounded-xl text-white text-xs sm:text-sm font-bold shadow-md flex items-center gap-1.5 transition-all active:scale-98"
+                style={{ backgroundColor: activeHex, boxShadow: `0 4px 14px -3px ${activeHex}40` }}
               >
                 <ArrowUpRight className="w-4 h-4" />
                 <span>Withdraw Request</span>
@@ -119,18 +135,20 @@ export const HoldingRequestsView: React.FC = () => {
           <button
             onClick={() => setActiveTab('all')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'all'
-              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+              ? 'text-white shadow-sm'
               : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
+            style={activeTab === 'all' ? { backgroundColor: activeHex } : undefined}
           >
             All Limit Requests ({userVisibleReqs.length})
           </button>
           <button
             onClick={() => setActiveTab('deposits')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'deposits'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+              ? 'text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
+            style={activeTab === 'deposits' ? { backgroundColor: activeHex } : undefined}
           >
             <ArrowDownRight className="w-3.5 h-3.5" />
             Deposits ({deposits.length})
@@ -138,9 +156,10 @@ export const HoldingRequestsView: React.FC = () => {
           <button
             onClick={() => setActiveTab('withdrawals')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'withdrawals'
-              ? 'bg-emerald-600 text-white shadow-sm'
-              : 'text-slate-500 hover:text-emerald-600 dark:hover:text-emerald-400'
+              ? 'text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
+            style={activeTab === 'withdrawals' ? { backgroundColor: activeHex } : undefined}
           >
             <ArrowUpRight className="w-3.5 h-3.5" />
             Withdrawals ({withdrawals.length})
@@ -205,14 +224,16 @@ export const HoldingRequestsView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => openCreateModal('deposit')}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-1"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1"
+                  style={{ backgroundColor: activeHex }}
                 >
                   <ArrowDownRight className="w-3.5 h-3.5" />
                   Deposit Update
                 </button>
                 <button
                   onClick={() => openCreateModal('withdraw')}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-1"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1"
+                  style={{ backgroundColor: activeHex }}
                 >
                   <ArrowUpRight className="w-3.5 h-3.5" />
                   Withdraw Request
@@ -241,10 +262,11 @@ export const HoldingRequestsView: React.FC = () => {
                         {item.ticketNumber}
                       </span>
                       <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${isDeposit
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          }`}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${activeHex} 12%, transparent)`,
+                          color: activeHex,
+                        }}
                       >
                         {isDeposit ? <ArrowDownRight className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
                         {isDeposit ? 'Deposit Update' : 'Withdrawal'}
@@ -320,7 +342,10 @@ export const HoldingRequestsView: React.FC = () => {
                   <span className="font-medium text-slate-600 dark:text-slate-300 truncate max-w-37.5">
                     {item.clientName} ({item.clientCompany || 'Client'})
                   </span>
-                  <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold group-hover:underline">
+                  <span
+                    className="inline-flex items-center gap-1 font-semibold group-hover:underline"
+                    style={{ color: activeHex }}
+                  >
                     Inspect Details <ExternalLink className="w-3 h-3" />
                   </span>
                 </div>

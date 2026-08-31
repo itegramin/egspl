@@ -1,38 +1,28 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
-import { ShieldOff, LogIn, RefreshCw, X } from 'lucide-react';
+import { ShieldOff, LogIn, Home } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 /**
  * InvalidSessionModal
  *
- * Shown as an overlay on the app dashboard whenever the user's auth
- * session is missing or expired (i.e. `session === null`).
+ * Shown as an overlay on the app whenever there is no valid auth session
+ * (i.e. `session === null`). Because the dashboard is already auth-gated by
+ * AppAuthGate, this handles the case where a session that was valid becomes
+ * invalid mid-use (expired / revoked / signed out).
  *
  * Provides two actions:
- *  - "Sign In" → navigates to the Auth view
- *  - "Refresh Session" → attempts supabase.auth.refreshSession()
+ *  - "Sign In Again" → navigates to the Auth view
+ *  - "Go Home" → navigates back to the public home page
  */
 export const InvalidSessionModal: React.FC = () => {
-  const { session, refreshSession } = useAuth();
-  const { goToAuth } = useApp();
-  const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const { isInitialLoading, session } = useAuth();
+  const { goToAuth, goToHome } = useApp();
 
-  // Only show when there is no valid session
-  const isOpen = !session;
-
-  const handleSignIn = () => {
-    goToAuth();
-  };
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await refreshSession();
-    setIsRefreshing(false);
-    // If the session was refreshed successfully, `session` will update
-    // reactively and this modal will close automatically.
-  };
+  // While auth status is being checked (initial load / reload), keep the
+  // overlay hidden so the LoadingScreen is what the user sees.
+  const isOpen = !isInitialLoading && !session;
 
   return (
     <AnimatePresence>
@@ -77,37 +67,35 @@ export const InvalidSessionModal: React.FC = () => {
                     id="invalid-session-title"
                     className="text-lg font-bold text-slate-900 dark:text-white"
                   >
-                    Session Expired
+                    No Valid Session
                   </h2>
                   <p className="mt-1.5 text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Your authentication session is no longer valid. You can try
-                    refreshing the session, or sign in again to continue.
+                    You are not signed in or your authentication session is no
+                    longer valid. Sign in again to continue, or return to the
+                    home page.
                   </p>
                 </div>
 
                 {/* Actions */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full mt-1">
-                  {/* Refresh attempt */}
+                  {/* Go home */}
                   <button
-                    id="invalid-session-refresh-btn"
-                    onClick={handleRefresh}
-                    disabled={isRefreshing}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    id="invalid-session-gohome-btn"
+                    onClick={goToHome}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/70 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold transition-all active:scale-95"
                   >
-                    <RefreshCw
-                      className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-500' : 'text-slate-400'}`}
-                    />
-                    {isRefreshing ? 'Refreshing…' : 'Refresh Session'}
+                    <Home className="w-4 h-4 text-slate-400" />
+                    Go Home
                   </button>
 
-                  {/* Sign in */}
+                  {/* Sign in again */}
                   <button
                     id="invalid-session-signin-btn"
-                    onClick={handleSignIn}
+                    onClick={goToAuth}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-indigo-600/25 transition-all active:scale-95"
                   >
                     <LogIn className="w-4 h-4" />
-                    Sign In
+                    Sign In Again
                   </button>
                 </div>
 

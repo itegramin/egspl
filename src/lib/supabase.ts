@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { cookieStorageAdapter } from './cookieStorage';
 import type {
   Database,
   DbUser,
@@ -44,13 +45,14 @@ export const isSupabaseConfigured: boolean = Boolean(
 export const supabase: SupabaseClient = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
-      // ── Security: keep the JWT in memory only (not localStorage) ──────────
-      // persistSession: false prevents the access_token / refresh_token from
-      // being written to localStorage where XSS scripts could read it.
-      // Trade-off: the session ends when the tab is closed (no cross-tab
-      // persistence). autoRefreshToken still silently renews the JWT while the
-      // tab is open. detectSessionInUrl handles magic-link / OAuth redirects.
-      persistSession: false,
+      // ── Security: session stored in Secure, SameSite=Lax cookies ──────────
+      // persistSession: true + cookieStorageAdapter writes the access/refresh
+      // tokens into cookies (not localStorage) so the session survives page
+      // reloads. SameSite=Lax blocks cross-origin CSRF; Secure ensures the
+      // cookie is only sent over HTTPS. The cookie Max-Age (15 min) mirrors
+      // the inactivity timeout enforced by SessionContext.
+      persistSession: true,
+      storage: cookieStorageAdapter,
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },

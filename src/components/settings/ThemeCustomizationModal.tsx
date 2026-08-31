@@ -22,7 +22,6 @@ import {
   Check,
   RotateCcw,
   X,
-  ShieldCheck,
   Sun,
   Moon,
   Layers,
@@ -60,32 +59,7 @@ export const ThemeCustomizationModal: React.FC = () => {
   const [showImportBox, setShowImportBox] = useState(false);
   const [hasCopiedJson, setHasCopiedJson] = useState(false);
 
-  // Only Admins are authorized
-  const isAdmin = user?.role === 'admin';
-
   if (!isThemeModalOpen) return null;
-
-  if (!isAdmin) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 max-w-sm w-full text-center space-y-4">
-          <div className="w-12 h-12 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Admin Privileges Required</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Theme customization and brand styling controls are restricted exclusively to Platform Administrators.
-          </p>
-          <button
-            onClick={closeThemeModal}
-            className="w-full py-2 px-4 rounded-xl bg-slate-800 text-white text-xs font-bold hover:bg-slate-700 transition-colors"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   const handleSelectPreset = (presetId: ThemePreset) => {
     updateThemeConfig({ preset: presetId });
@@ -197,7 +171,7 @@ export const ThemeCustomizationModal: React.FC = () => {
                     Theme & Brand Customization
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                    Admin Only
+                    Personalize
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">

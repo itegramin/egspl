@@ -349,11 +349,16 @@ export function applyTheme(config: ThemeConfig): void {
   const radius = RADIUS_VALUES[config.radius] || RADIUS_VALUES.modern;
   const font = FONT_FAMILIES[config.fontFamily] || FONT_FAMILIES.inter;
 
-  // 1. Set Primary Color Shades for Tailwind @theme & CSS vars
+  // 1. Set Primary Color Shades for Tailwind @theme & CSS vars.
+  //    Every color family (indigo, emerald, purple, violet, cyan, amber,
+  //    rose, blue) maps to these in index.css, so setting them here
+  //    recolors the entire dashboard and every component at once.
+  const THEME_COLOR_FAMILIES = ['primary', 'indigo', 'emerald', 'purple', 'violet', 'cyan', 'amber', 'rose', 'blue', 'red', 'orange', 'yellow', 'teal'];
   Object.entries(activeShades).forEach(([shade, hex]) => {
-    root.style.setProperty(`--color-primary-${shade}`, hex);
-    root.style.setProperty(`--color-indigo-${shade}`, hex); // Backward compatibility mapping
-    root.style.setProperty(`--primary-${shade}`, hex);
+    THEME_COLOR_FAMILIES.forEach(family => {
+      root.style.setProperty(`--color-${family}-${shade}`, hex);
+    });
+    root.style.setProperty(`--primary-${shade}`, hex); // Backward compatibility mapping
   });
 
   // 2. Main Brand Color & Glow

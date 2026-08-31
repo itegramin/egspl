@@ -1,6 +1,8 @@
 import React from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
+import { SessionTimerProvider, useSessionTimer } from './context/SessionContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { Toast } from './components/common/Toast';
@@ -12,6 +14,7 @@ import { EditProfileModal } from './components/profile/EditProfileModal';
 import { ThemeCustomizationModal } from './components/settings/ThemeCustomizationModal';
 import { HomePage } from './components/home/HomePage';
 import { InvalidSessionModal } from './components/auth/InvalidSessionModal';
+import { SessionExpiryModal } from './components/auth/SessionExpiryModal';
 import { PageTransition } from './components/common/PageTransition';
 import { LoadingScreen } from './components/common/LoadingScreen';
 
@@ -111,46 +114,28 @@ const MainLayout: React.FC = () => {
       <RequestDetailModal />
       <EditProfileModal />
       <ThemeCustomizationModal />
-      <InvalidSessionModal />
+      <SessionExpiryModal />
       <Toast />
     </div>
   );
 };
 
-const AppContent: React.FC = () => {
+const AppAuthGate: React.FC = () => {
   const { isAuthenticated, user, isInitialLoading } = useAuth();
-  const { currentView } = useApp();
 
+  // During initial loading (Supabase session restore from cookies), keep the
+  // loading screen visible — never flash the auth modal or AuthScreen in between.
   if (isInitialLoading) {
-    return <LoadingScreen label="Connecting to Supabase…" />;
+    return <LoadingScreen label="Restoring session…" />;
   }
 
-  // 1. If currently on public Home Page (no auth needed)
-  if (currentView === 'home') {
-    return (
-      <>
-        <HomePage />
-        <Toast />
-      </>
-    );
-  }
-
-  // 2. If on Auth Screen
-  if (currentView === 'auth') {
-    return (
-      <>
-        <AuthScreen />
-        <Toast />
-      </>
-    );
-  }
-
-  // 3. User wants to view App Dashboard
-  // If not signed in, gate dashboard behind AuthScreen
+  // If not signed in, gate the dashboard behind the invalid-session modal.
+  // The modal "pops" with "Sign In Again" (→ /auth) and "Go Home" (→ /) actions
+  // rather than dropping the user onto a full login screen unexpectedly.
   if (!isAuthenticated || !user) {
     return (
       <>
-        <AuthScreen />
+        <InvalidSessionModal />
         <Toast />
       </>
     );
@@ -169,12 +154,60 @@ const AppContent: React.FC = () => {
   return <MainLayout />;
 };
 
+const AppContent: React.FC = () => {
+  const location = useLocation();
+  const pathname = location.pathname.replace(/^\/+/, '').toLowerCase();
+
+  // Home (public) page
+  if (pathname === '' || pathname === 'home') {
+    return (
+      <>
+        <HomePage />
+        <Toast />
+      </>
+    );
+  }
+
+  // Auth screen
+  if (pathname === 'auth' || pathname === 'login' || pathname === 'signin' || pathname === 'signup') {
+    return (
+      <>
+        <AuthScreen />
+        <Toast />
+      </>
+    );
+  }
+
+  // Everything else is the dashboard / app area (auth-gated)
+  return <AppAuthGate />;
+};
+
 export default function App() {
   return (
     <AuthProvider>
-      <AppProvider>
-        <AppContent />
+      <SessionTimerProvider>
+        <AppProvider>
+          <Routes>
+          <Route path="/" element={<AppContent />} />
+          <Route path="/home" element={<AppContent />} />
+          <Route path="/auth" element={<AppContent />} />
+          <Route path="/login" element={<AppContent />} />
+          <Route path="/signin" element={<AppContent />} />
+          <Route path="/signup" element={<AppContent />} />
+          <Route path="/dashboard" element={<AppContent />} />
+          <Route path="/support" element={<AppContent />} />
+          <Route path="/holding" element={<AppContent />} />
+          <Route path="/all-requests" element={<AppContent />} />
+          <Route path="/clients" element={<AppContent />} />
+          <Route path="/analytics" element={<AppContent />} />
+          <Route path="/rbac" element={<AppContent />} />
+          <Route path="/audit-logs" element={<AppContent />} />
+          <Route path="/notifications" element={<AppContent />} />
+          <Route path="/settings" element={<AppContent />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </AppProvider>
+      </SessionTimerProvider>
     </AuthProvider>
   );
 }
