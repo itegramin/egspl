@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { HoldingDepositRequest, HoldingWithdrawRequest } from '../../types';
+import { AmountInWords } from '../common/AmountInWords';
 import { StatusBadge, PriorityBadge, DeletionPendingBadge } from '../common/Badge';
 import { formatShortDateIST, formatDateIST } from '../../lib/dateUtils';
 import { THEME_PRESETS } from '../../lib/theme';
@@ -285,6 +286,12 @@ export const HoldingRequestsView: React.FC = () => {
                       <div className="text-xl font-extrabold text-slate-900 dark:text-white">
                         {isDeposit ? dep.currency : wdr.currency} {(isDeposit ? dep.amount : wdr.amount)?.toLocaleString()}
                       </div>
+                      <AmountInWords
+                        amount={isDeposit ? dep.amount : wdr.amount}
+                        currency={isDeposit ? dep.currency : wdr.currency}
+                        variant="subtext"
+                        className="mt-0.5 text-[10px]"
+                      />
 
                       <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
                         {item.description}
