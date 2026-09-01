@@ -180,6 +180,7 @@ export type DepositMethod = 'bank_deposit' | 'imps' | 'upi' | 'bank_wire';
 export interface HoldingDepositRequest extends BaseRequest {
   type: 'deposit';
   amount: number;
+  amountInWords?: string;
   currency: string;
   depositMethod: DepositMethod;
   transactionReferenceId: string; // Proof tx id or bank ref
@@ -204,11 +205,13 @@ export interface CmaStatus {
   authorizedAmount?: number;
 }
 
-export type WithdrawMethod = 'bank_wire' | 'sepa' | 'crypto_usdt' | 'crypto_btc' | 'other';
+export type WithdrawMethod = 'bank_transfer' | 'imps' | 'upi';
+
 
 export interface HoldingWithdrawRequest extends BaseRequest {
   type: 'withdraw';
   amount: number;
+  amountInWords?: string;
   currency: string;
   withdrawMethod: WithdrawMethod;
   beneficiaryAccountName: string;

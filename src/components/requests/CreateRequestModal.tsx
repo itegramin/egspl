@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { uploadAttachmentsToSupabase } from '../../lib/supabase';
+import { AmountInWords } from '../common/AmountInWords';
+import { formatAmountInWords } from '../../lib/indianCurrency';
 import { RequestType, RequestPriority, SupportTicket, HoldingDepositRequest, HoldingWithdrawRequest } from '../../types';
 import {
   X,
@@ -63,7 +65,7 @@ export const CreateRequestModal: React.FC = () => {
   // Withdraw Form State
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
   const [withdrawCurrency, setWithdrawCurrency] = useState(user.currency || 'INR');
-  const [withdrawMethod, setWithdrawMethod] = useState<HoldingWithdrawRequest['withdrawMethod']>('bank_wire');
+  const [withdrawMethod, setWithdrawMethod] = useState<HoldingWithdrawRequest['withdrawMethod']>('bank_transfer');
   const [beneficiaryName, setBeneficiaryName] = useState<string>(user.companyName || user.name);
   const [beneficiaryAccount, setBeneficiaryAccount] = useState<string>(user.account);
   const [showBeneficiaryAccount, setShowBeneficiaryAccount] = useState<boolean>(false);
@@ -226,6 +228,7 @@ export const CreateRequestModal: React.FC = () => {
 
         const newReq = await createHoldingDeposit({
           amount: amt,
+          amountInWords: formatAmountInWords(amt, { currency: depositCurrency }),
           currency: depositCurrency,
           depositMethod,
           transactionReferenceId: depositTxRef,
@@ -233,7 +236,7 @@ export const CreateRequestModal: React.FC = () => {
           kioskId: kioskId.trim() || user.kioskId,
           branchCode: depositBranchCode.trim(),
           depositDate: depositDate || new Date().toISOString().split('T')[0],
-          description: depositDesc.trim() || `Deposit update request of ${depositCurrency} ${amt.toLocaleString()} via ${depositMethod.toUpperCase()}`,
+          description: depositDesc.trim() || `Deposit update request of ${depositCurrency} ${amt.toLocaleString()} (${formatAmountInWords(amt, { currency: depositCurrency })}) via ${depositMethod.toUpperCase()}`,
           attachments: uploadedAttachments,
         });
         handleClose();
@@ -252,6 +255,7 @@ export const CreateRequestModal: React.FC = () => {
         }
         const newReq = await createHoldingWithdraw({
           amount: amt,
+          amountInWords: formatAmountInWords(amt, { currency: withdrawCurrency }),
           currency: withdrawCurrency,
           withdrawMethod,
           beneficiaryAccountName: beneficiaryName.trim(),
@@ -260,7 +264,7 @@ export const CreateRequestModal: React.FC = () => {
           bankNameOrNetwork: bankName.trim(),
           swiftOrIban: ifscCode.trim(),
           reason: withdrawReason.trim(),
-          description: withdrawDesc.trim() || `Holding withdrawal request of ${withdrawCurrency} ${amt.toLocaleString()} to ${beneficiaryName}`,
+          description: withdrawDesc.trim() || `Holding withdrawal request of ${withdrawCurrency} ${amt.toLocaleString()} (${formatAmountInWords(amt, { currency: withdrawCurrency })}) to ${beneficiaryName}`,
           attachments: uploadedAttachments,
         });
         handleClose();
@@ -492,6 +496,14 @@ export const CreateRequestModal: React.FC = () => {
                         <option value="INR">INR (₹)</option>
                       </select>
                     </div>
+                    {depositAmount && parseFloat(depositAmount) > 0 ? (
+                      <AmountInWords
+                        amount={depositAmount}
+                        currency={depositCurrency}
+                        prefixLabel="Amount in Words:"
+                        className="mt-2"
+                      />
+                    ) : null}
                   </div>
 
                   <div className='sm:col-span-2'>
@@ -638,6 +650,14 @@ export const CreateRequestModal: React.FC = () => {
                         <option value="INR">INR (₹)</option>
                       </select>
                     </div>
+                    {withdrawAmount && parseFloat(withdrawAmount) > 0 ? (
+                      <AmountInWords
+                        amount={withdrawAmount}
+                        currency={withdrawCurrency}
+                        prefixLabel="Amount in Words:"
+                        className="mt-2"
+                      />
+                    ) : null}
                   </div>
 
                   <div className="sm:col-span-2">
@@ -647,10 +667,11 @@ export const CreateRequestModal: React.FC = () => {
                     <select
                       id="withdraw-method-select"
                       value={withdrawMethod}
+                      disabled
                       onChange={(e) => setWithdrawMethod(e.target.value as any)}
                       className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:outline-none"
                     >
-                      <option value="bank_deposit">Bank Deposit</option>
+                      <option value="bank_deposit">Bank Transfer</option>
                       <option value="imps">IMPS</option>
                       <option value="upi">UPI</option>
                     </select>
@@ -667,6 +688,8 @@ export const CreateRequestModal: React.FC = () => {
                       type="text"
                       placeholder="e.g. KIOSK-091"
                       value={kioskId}
+                      disabled
+                      required
                       onChange={(e) => setKioskId(e.target.value)}
                       className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:outline-none font-mono"
                     />
@@ -680,6 +703,7 @@ export const CreateRequestModal: React.FC = () => {
                       id="beneficiary-name-input"
                       type="text"
                       required
+                      disabled
                       placeholder="Beneficiary Account Name"
                       value={beneficiaryName}
                       onChange={(e) => setBeneficiaryName(e.target.value)}
@@ -697,6 +721,7 @@ export const CreateRequestModal: React.FC = () => {
                       type="text"
                       placeholder="e.g. State Bank of India"
                       value={bankName}
+                      disabled
                       onChange={(e) => setBankName(e.target.value)}
                       className="w-full px-3.5 py-2 text-xs sm:text-sm rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:outline-none"
                     />
@@ -710,6 +735,8 @@ export const CreateRequestModal: React.FC = () => {
                       type="text"
                       placeholder="e.g. SBIN0001234"
                       value={ifscCode}
+                      required
+                      disabled
                       onChange={(e) => setIfscCode(e.target.value.toUpperCase())}
                       className="w-full px-3.5 py-2 text-xs sm:text-sm font-mono uppercase rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:outline-none"
                     />
@@ -730,6 +757,7 @@ export const CreateRequestModal: React.FC = () => {
                         id="beneficiary-account-input"
                         type={showBeneficiaryAccount ? 'text' : 'password'}
                         required
+                        disabled
                         placeholder="e.g. 123456789012"
                         value={beneficiaryAccount}
                         onChange={(e) => setBeneficiaryAccount(e.target.value)}

@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { cookieStorageAdapter } from './cookieStorage';
+import { formatAmountInWords } from './indianCurrency';
 import type {
   Database,
   DbUser,
@@ -232,11 +233,14 @@ export function mapDbRequest(row: DbRequest | any): ServiceRequest {
   }
 
   if (row.type === 'deposit') {
+    const amt = row.amount ? Number(row.amount) : 0;
+    const cur = row.currency || 'INR';
     return {
       ...base,
       type: 'deposit',
-      amount: row.amount ? Number(row.amount) : 0,
-      currency: row.currency || 'USD',
+      amount: amt,
+      amountInWords: row.amount_in_words || formatAmountInWords(amt, { currency: cur }),
+      currency: cur,
       depositMethod: row.deposit_method || 'bank_deposit',
       transactionReferenceId: row.transaction_reference_id || '',
       senderAccountName: row.sender_account_name || undefined,
@@ -246,11 +250,14 @@ export function mapDbRequest(row: DbRequest | any): ServiceRequest {
     } as HoldingDepositRequest;
   }
 
+  const amt = row.amount ? Number(row.amount) : 0;
+  const cur = row.currency || 'INR';
   return {
     ...base,
     type: 'withdraw',
-    amount: row.amount ? Number(row.amount) : 0,
-    currency: row.currency || 'INR',
+    amount: amt,
+    amountInWords: row.amount_in_words || formatAmountInWords(amt, { currency: cur }),
+    currency: cur,
     withdrawMethod: row.withdraw_method || 'bank_wire',
     beneficiaryAccountName: row.beneficiary_account_name || '',
     beneficiaryAccountNumberOrAddress: row.beneficiary_account_number || '',

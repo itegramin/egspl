@@ -9,6 +9,7 @@ import {
   RequestStatus,
   UserRole,
 } from '../../types';
+import { AmountInWords } from '../common/AmountInWords';
 import { StatusBadge, PriorityBadge, TypeBadge, RoleBadge, DeletionPendingBadge } from '../common/Badge';
 import { formatDateIST, formatTimeIST, formatDateTimeIST } from '../../lib/dateUtils';
 import {
@@ -609,6 +610,15 @@ export const RequestDetailModal: React.FC = () => {
                                 Cancel
                               </button>
                             </div>
+                            {authorizedAmountInput !== '' && !isNaN(Number(authorizedAmountInput)) && Number(authorizedAmountInput) > 0 && (
+                              <AmountInWords
+                                amount={authorizedAmountInput}
+                                currency={withdrawReq?.currency || 'INR'}
+                                variant="badge"
+                                prefixLabel="Configured Amount in Words:"
+                                className="mt-1"
+                              />
+                            )}
                             <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight">
                               * Defaults to request amount. This amount is locked at the Configure step and shown as
                               the authorized amount throughout.
@@ -762,6 +772,12 @@ export const RequestDetailModal: React.FC = () => {
                       <div className="font-bold text-sm text-slate-900 dark:text-white">
                         {(req as HoldingDepositRequest).currency} {(req as HoldingDepositRequest).amount?.toLocaleString()}
                       </div>
+                      <AmountInWords
+                        amount={(req as HoldingDepositRequest).amount}
+                        currency={(req as HoldingDepositRequest).currency}
+                        variant="subtext"
+                        className="mt-0.5"
+                      />
                     </div>
 
                     <div>
@@ -837,6 +853,12 @@ export const RequestDetailModal: React.FC = () => {
                       <div className="font-bold text-sm text-slate-900 dark:text-white">
                         {(req as HoldingWithdrawRequest).currency} {(req as HoldingWithdrawRequest).amount?.toLocaleString()}
                       </div>
+                      <AmountInWords
+                        amount={(req as HoldingWithdrawRequest).amount}
+                        currency={(req as HoldingWithdrawRequest).currency}
+                        variant="subtext"
+                        className="mt-0.5"
+                      />
                     </div>
 
                     {((req as HoldingWithdrawRequest).authorizedAmount || cma.authorizedAmount) && (
@@ -845,6 +867,12 @@ export const RequestDetailModal: React.FC = () => {
                         <div className="font-extrabold text-sm text-emerald-600 dark:text-emerald-400">
                           {(req as HoldingWithdrawRequest).currency} {authorizedAmountValue.toLocaleString()}
                         </div>
+                        <AmountInWords
+                          amount={authorizedAmountValue}
+                          currency={(req as HoldingWithdrawRequest).currency}
+                          variant="subtext"
+                          className="mt-0.5"
+                        />
                       </div>
                     )}
 

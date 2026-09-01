@@ -28,6 +28,7 @@ import {
   getStoredPermissions,
   clearSensitiveStorage,
 } from '../lib/storage';
+import { formatAmountInWords } from '../lib/indianCurrency';
 import {
   supabase,
   fetchRequestsFromSupabase,
@@ -91,6 +92,7 @@ interface AppContextType {
 
   createHoldingDeposit: (data: {
     amount: number;
+    amountInWords?: string;
     currency: string;
     depositMethod: HoldingDepositRequest['depositMethod'];
     transactionReferenceId: string;
@@ -104,6 +106,7 @@ interface AppContextType {
 
   createHoldingWithdraw: (data: {
     amount: number;
+    amountInWords?: string;
     currency: string;
     withdrawMethod: HoldingWithdrawRequest['withdrawMethod'];
     beneficiaryAccountName: string;
@@ -792,6 +795,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Create Holding Deposit Request
   const createHoldingDeposit = async (data: {
     amount: number;
+    amountInWords?: string;
     currency: string;
     depositMethod: HoldingDepositRequest['depositMethod'];
     transactionReferenceId: string;
@@ -812,6 +816,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ticketNumber,
       type: 'deposit',
       amount: data.amount,
+      amountInWords: data.amountInWords || formatAmountInWords(data.amount, { currency: data.currency }),
       currency: data.currency,
       depositMethod: data.depositMethod,
       transactionReferenceId: data.transactionReferenceId,
@@ -884,6 +889,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Create Holding Withdraw Request
   const createHoldingWithdraw = async (data: {
     amount: number;
+    amountInWords?: string;
     currency: string;
     withdrawMethod: HoldingWithdrawRequest['withdrawMethod'];
     beneficiaryAccountName: string;
@@ -906,6 +912,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       title: `Withdraw ${data.currency} ${data.amount.toLocaleString()} to ${data.beneficiaryAccountName}`,
       description: data.description,
       amount: data.amount,
+      amountInWords: data.amountInWords || formatAmountInWords(data.amount, { currency: data.currency }),
       currency: data.currency,
       withdrawMethod: data.withdrawMethod,
       beneficiaryAccountName: data.beneficiaryAccountName,
