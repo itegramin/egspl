@@ -441,14 +441,14 @@ export const SettingsView: React.FC = () => {
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
                 <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">PostgREST API Endpoint</div>
                 <div className="font-mono text-slate-800 dark:text-slate-200 font-medium truncate mt-1">
-                  http://127.0.0.1:54321/rest/v1
+                  /rest/v1 (Configured & Active)
                 </div>
               </div>
 
               <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
                 <div className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">PostgreSQL Connection</div>
                 <div className="font-mono text-slate-800 dark:text-slate-200 font-medium truncate mt-1">
-                  postgresql://postgres:postgres@127.0.0.1:54322/postgres
+                  postgresql://[db_user]:[protected]@[db_host]/postgres
                 </div>
               </div>
             </div>

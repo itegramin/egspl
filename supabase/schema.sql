@@ -240,6 +240,38 @@ CREATE POLICY "csmp_users_delete_policy" ON csmp_users
     OR public.get_auth_role() = 'admin'
   );
 
+-- Security: Prevent non-administrators from tampering with privileged columns (role, status, balance)
+CREATE OR REPLACE FUNCTION public.protect_user_fields()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF public.get_auth_role() <> 'admin' AND auth.role() <> 'service_role' THEN
+    IF NEW.role IS DISTINCT FROM OLD.role THEN
+      RAISE EXCEPTION 'Unauthorized: Clients cannot modify their user role';
+    END IF;
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+      RAISE EXCEPTION 'Unauthorized: Clients cannot modify account status';
+    END IF;
+    IF NEW.auth_user_id IS DISTINCT FROM OLD.auth_user_id THEN
+      RAISE EXCEPTION 'Unauthorized: Clients cannot modify auth_user_id';
+    END IF;
+    IF NEW.estimated_holding_balance IS DISTINCT FROM OLD.estimated_holding_balance THEN
+      RAISE EXCEPTION 'Unauthorized: Clients cannot modify holding balance directly';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_protect_user_fields ON csmp_users;
+CREATE TRIGGER trg_protect_user_fields
+  BEFORE UPDATE ON csmp_users
+  FOR EACH ROW EXECUTE FUNCTION public.protect_user_fields();
+
+
 -- -------------------------------------------------------------
 -- 2. csmp_requests POLICIES
 -- -------------------------------------------------------------
@@ -294,14 +326,14 @@ CREATE POLICY "csmp_requests_delete_policy" ON csmp_requests
 CREATE POLICY "csmp_role_permissions_select_policy" ON csmp_role_permissions
   FOR SELECT USING (true);
 
--- Allow modifying permissions for administrators and service role
+-- Allow modifying permissions for administrators and service role only (no anon access)
 CREATE POLICY "csmp_role_permissions_admin_policy" ON csmp_role_permissions
   FOR ALL USING (
-    auth.role() IN ('service_role', 'authenticated', 'anon')
+    auth.role() = 'service_role'
     OR public.get_auth_role() = 'admin'
   )
   WITH CHECK (
-    auth.role() IN ('service_role', 'authenticated', 'anon')
+    auth.role() = 'service_role'
     OR public.get_auth_role() = 'admin'
   );
 
@@ -319,10 +351,10 @@ CREATE POLICY "csmp_notifications_select_policy" ON csmp_notifications
     -- No anon access
   );
 
--- Any user (authenticated, service_role, or anon guest) can insert notifications (needed to dispatch alerts)
+-- Only authenticated sessions or service_role can insert notifications (blocks unauthenticated injection)
 CREATE POLICY "csmp_notifications_insert_policy" ON csmp_notifications
   FOR INSERT WITH CHECK (
-    auth.role() IN ('authenticated', 'service_role', 'anon')
+    auth.role() IN ('authenticated', 'service_role')
   );
 
 -- Users can mark their own notifications read; admins can update any
@@ -389,10 +421,8 @@ DECLARE
   extracted_role TEXT;
   extracted_name TEXT;
 BEGIN
-  extracted_role := COALESCE(new.raw_user_meta_data->>'role', 'client');
-  IF extracted_role NOT IN ('client', 'operator', 'admin') THEN
-    extracted_role := 'client';
-  END IF;
+  -- Security: Always force 'client' role for self-signups to prevent metadata privilege escalation
+  extracted_role := 'client';
 
   extracted_name := COALESCE(
     new.raw_user_meta_data->>'name',
@@ -485,16 +515,25 @@ BEGIN
 END $$;
 
 -- -------------------------------------------------------------
--- STORAGE: Request attachments bucket
+-- STORAGE: Request attachments bucket (Private & Secure)
 -- -------------------------------------------------------------
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('csmp-attachments', 'csmp-attachments', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('csmp-attachments', 'csmp-attachments', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
 
--- Authenticated users can upload files; anyone (incl. anon with public URL) can read
+-- Authenticated users can read files they uploaded, or all files if operator/admin
 DROP POLICY IF EXISTS "csmp-attachments-public-read" ON storage.objects;
-CREATE POLICY "csmp-attachments-public-read" ON storage.objects
-  FOR SELECT USING (bucket_id = 'csmp-attachments');
+DROP POLICY IF EXISTS "csmp-attachments-auth-read" ON storage.objects;
+CREATE POLICY "csmp-attachments-auth-read" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'csmp-attachments'
+    AND (
+      auth.role() = 'service_role'
+      OR public.get_auth_role() IN ('admin', 'operator')
+      OR (storage.foldername(name))[2] = public.get_auth_user_id()
+      OR (storage.foldername(name))[2] = auth.uid()::text
+    )
+  );
 
 DROP POLICY IF EXISTS "csmp-attachments-auth-insert" ON storage.objects;
 CREATE POLICY "csmp-attachments-auth-insert" ON storage.objects
@@ -503,12 +542,17 @@ CREATE POLICY "csmp-attachments-auth-insert" ON storage.objects
     AND (auth.role() IN ('authenticated', 'service_role'))
   );
 
--- Allow creators to delete their own uploads
+-- Allow creators to delete their own uploads (folder index 2 corresponds to ownerId: uploads/<ownerId>/filename)
 DROP POLICY IF EXISTS "csmp-attachments-auth-delete" ON storage.objects;
 CREATE POLICY "csmp-attachments-auth-delete" ON storage.objects
   FOR DELETE USING (
     bucket_id = 'csmp-attachments'
-    AND (auth.role() IN ('authenticated', 'service_role'))
-    AND (storage.foldername(name))[1] = auth.uid()::text
+    AND (
+      auth.role() = 'service_role'
+      OR public.get_auth_role() = 'admin'
+      OR (storage.foldername(name))[2] = public.get_auth_user_id()
+      OR (storage.foldername(name))[2] = auth.uid()::text
+    )
   );
+
 

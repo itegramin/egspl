@@ -19,7 +19,7 @@ async function runMigration() {
 
   const client = new Client({
     connectionString,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    ssl: isLocal ? false : { rejectUnauthorized: true },
   });
 
   try {
