@@ -126,7 +126,7 @@ export const EditProfileModal: React.FC = () => {
           <div className="bg-gradient-to-r from-slate-900 via-emerald-950/80 to-slate-900 text-white p-6 relative border-b border-emerald-900/40">
             <button
               onClick={closeProfileModal}
-              className="absolute top-5 right-5 p-2 rounded-full text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors"
+              className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-white/10 active:scale-95 transition-all border border-transparent hover:border-rose-400/30"
               aria-label="Close modal"
             >
               <X className="w-5 h-5" />

@@ -201,6 +201,11 @@ interface AppContextType {
   openThemeModal: () => void;
   closeThemeModal: () => void;
 
+  // Branding Modal (admin only)
+  isBrandingModalOpen: boolean;
+  openBrandingModal: () => void;
+  closeBrandingModal: () => void;
+
   // Mobile Navigation
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
@@ -382,6 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Dynamic Theme Config
   const [themeConfig, setThemeConfigState] = useState<ThemeConfig>(() => getStoredTheme());
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -408,6 +414,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const openThemeModal = useCallback(() => setIsThemeModalOpen(true), []);
   const closeThemeModal = useCallback(() => setIsThemeModalOpen(false), []);
+
+  const openBrandingModal = useCallback(() => setIsBrandingModalOpen(true), []);
+  const closeBrandingModal = useCallback(() => setIsBrandingModalOpen(false), []);
 
   const toggleMobileSidebar = useCallback(() => setIsMobileSidebarOpen(prev => !prev), []);
   const closeMobileSidebar = useCallback(() => setIsMobileSidebarOpen(false), []);
@@ -837,7 +846,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Notify the submitting client
     dispatchNotification(
       user.id,
-      `Support Ticket Created: ${ticketNumber}`,
+      `Support Request`,
       `Your ticket "${data.title}" (${data.priority.toUpperCase()}) was logged successfully.`,
       'new_request',
       'info',
@@ -847,9 +856,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. Broadcast to all operations staff and admins
     dispatchNotification(
       'all_staff',
-      `New Support Request: ${ticketNumber}`,
-      `${user.name} submitted ticket "${data.title}" (${data.priority.toUpperCase()})${
-        assignedTicket.assignedOperatorId ? ` — auto-assigned to ${assignedTicket.assignedOperatorName}` : ''
+      `Support Request`,
+      `${user.name} submitted ticket "${data.title}" (${data.priority.toUpperCase()})${assignedTicket.assignedOperatorId ? ` — auto-assigned to ${assignedTicket.assignedOperatorName}` : ''
       }`,
       'new_request',
       data.priority === 'urgent' ? 'warning' : 'info',
@@ -934,7 +942,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Notify the submitting client
     dispatchNotification(
       user.id,
-      `Deposit Request Submitted: ${ticketNumber}`,
+      `Deposit Request`,
       `Deposit update for ${data.currency} ${data.amount.toLocaleString()} is pending operator verification.`,
       'new_request',
       'info',
@@ -944,9 +952,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. Broadcast to financial operators and admins
     dispatchNotification(
       'all_staff',
-      `Deposit Update Request: ${ticketNumber}`,
-      `${user.name} submitted a ${data.currency} ${data.amount.toLocaleString()} deposit confirmation.${
-        assignedDeposit.assignedOperatorId ? ` Auto-assigned to ${assignedDeposit.assignedOperatorName}.` : ''
+      `Deposit Update`,
+      `${user.name} submitted a ${data.currency} ${data.amount.toLocaleString()} deposit confirmation.${assignedDeposit.assignedOperatorId ? ` Auto-assigned to ${assignedDeposit.assignedOperatorName}.` : ''
       }`,
       'new_request',
       'warning',
@@ -1032,7 +1039,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. Notify the submitting client
     dispatchNotification(
       user.id,
-      `Withdrawal Request Logged: ${ticketNumber}`,
+      `Withdrawal Request`,
       `Payout request for ${data.currency} ${data.amount.toLocaleString()} submitted for compliance checks.`,
       'new_request',
       'info',
@@ -1042,15 +1049,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. Broadcast to staff and compliance admins
     dispatchNotification(
       'all_staff',
-      `Withdrawal Request: ${ticketNumber}`,
-      `${user.name} requested withdrawal of ${data.currency} ${data.amount.toLocaleString()}.${
-        assignedWithdraw.assignedOperatorId
-          ? ` Maker: ${assignedWithdraw.assignedOperatorName}.`
-          : ''
-      }${
-        (assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId
-          ? ` Authorizer: ${(assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerName}.`
-          : ''
+      `Withdrawal Request`,
+      `${user.name} requested withdrawal of ${data.currency} ${data.amount.toLocaleString()}.${assignedWithdraw.assignedOperatorId
+        ? ` Maker: ${assignedWithdraw.assignedOperatorName}.`
+        : ''
+      }${(assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId
+        ? ` Authorizer: ${(assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerName}.`
+        : ''
       }`,
       'new_request',
       'warning',
@@ -2143,6 +2148,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsThemeModalOpen,
         openThemeModal,
         closeThemeModal,
+        isBrandingModalOpen,
+        openBrandingModal,
+        closeBrandingModal,
         isMobileSidebarOpen,
         setIsMobileSidebarOpen,
         toggleMobileSidebar,

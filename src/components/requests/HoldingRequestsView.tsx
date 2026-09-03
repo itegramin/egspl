@@ -355,7 +355,7 @@ export const HoldingRequestsView: React.FC = () => {
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
           onClick={() => setActiveTab('withdrawals')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'withdrawals'
+          className={`cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'withdrawals'
             ? 'text-white shadow-sm'
             : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
@@ -366,7 +366,7 @@ export const HoldingRequestsView: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('deposits')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'deposits'
+          className={`cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${activeTab === 'deposits'
             ? 'text-white shadow-sm'
             : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
@@ -377,7 +377,7 @@ export const HoldingRequestsView: React.FC = () => {
         </button>
         <button
           onClick={() => setActiveTab('all')}
-          className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'all'
+          className={`cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${activeTab === 'all'
             ? 'text-white shadow-sm'
             : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
             }`}
@@ -409,11 +409,10 @@ export const HoldingRequestsView: React.FC = () => {
               type="button"
               id="toggle-holding-filters-btn"
               onClick={() => setIsFilterExpanded(prev => !prev)}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-                isFilterExpanded || activeFiltersCount > 0
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 shadow-xs'
-                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-              }`}
+              className={`cursor-pointer px-3 py-2 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${isFilterExpanded || activeFiltersCount > 0
+                ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 shadow-xs'
+                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                }`}
               title={isFilterExpanded ? 'Collapse filter menu' : 'Expand filter menu'}
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -640,7 +639,7 @@ export const HoldingRequestsView: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsFilterExpanded(true)}
-              className="text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
+              className="cursor-pointer text-emerald-600 dark:text-emerald-400 hover:underline font-semibold"
             >
               {activeFiltersCount > 0 ? 'Edit filters →' : 'More filters →'}
             </button>
@@ -667,7 +666,7 @@ export const HoldingRequestsView: React.FC = () => {
             {isFiltered && (
               <button
                 onClick={handleResetFilters}
-                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1.5"
+                className="cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3 h-3" />
                 Reset Filters & Sorting
@@ -676,17 +675,17 @@ export const HoldingRequestsView: React.FC = () => {
             {canCreate && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => openCreateModal('deposit')}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1"
+                  className="cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1"
                   style={{ backgroundColor: activeHex }}
+                  onClick={() => openCreateModal('deposit')}
                 >
                   <ArrowDownRight className="w-3.5 h-3.5" />
                   Deposit Update
                 </button>
                 <button
-                  onClick={() => openCreateModal('withdraw')}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1"
+                  className="cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors flex items-center gap-1"
                   style={{ backgroundColor: activeHex }}
+                  onClick={() => openCreateModal('withdraw')}
                 >
                   <ArrowUpRight className="w-3.5 h-3.5" />
                   Withdraw Request
@@ -714,7 +713,7 @@ export const HoldingRequestsView: React.FC = () => {
                   }`}
               >
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] text-slate-400 font-mono">
                         {formatShortDateIST(item.createdAt)}
@@ -786,7 +785,7 @@ export const HoldingRequestsView: React.FC = () => {
                     </div>
 
                     {/* Proof & Reference detail */}
-                    <div className="p-2.5 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 text-xs space-y-1 border border-slate-100 dark:border-slate-800/50">
+                    <div className="p-1 rounded-xl bg-slate-50/70 dark:bg-slate-800/40 text-xs space-y-1 border border-slate-100 dark:border-slate-800/50">
                       {isDeposit ? (
                         <>
                           <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
@@ -836,12 +835,6 @@ export const HoldingRequestsView: React.FC = () => {
                               {wdr.beneficiaryAccountNumberOrAddress}
                             </span>
                           </div>
-                          {wdr.bankNameOrNetwork && (
-                            <div className="flex items-center justify-between text-slate-600 dark:text-slate-300">
-                              <span className="text-slate-400">Bank / Net:</span>
-                              <span className="font-medium truncate max-w-45">{wdr.bankNameOrNetwork}</span>
-                            </div>
-                          )}
                         </>
                       )}
                     </div>

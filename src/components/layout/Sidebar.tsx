@@ -164,14 +164,23 @@ export const Sidebar: React.FC = () => {
         {/* Brand Header */}
         <div className="flex items-center justify-between gap-3 px-2 py-3 mb-4 rounded-xl bg-slate-800/60 border border-slate-700/50">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-grad-brand flex items-center justify-center text-white shadow-lg shadow-emerald-500/25 shrink-0">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-lg bg-grad-brand flex items-center justify-center text-white shadow-lg shadow-primary-500/25 shrink-0 overflow-hidden">
+              {themeConfig?.brandLogoUrl ? (
+                <img
+                  src={themeConfig.brandLogoUrl}
+                  alt="Brand logo"
+                  className="w-full h-full object-contain"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : (
+                <Sparkles className="w-5 h-5" />
+              )}
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-white text-sm tracking-tight leading-none truncate">
                 {themeConfig?.brandName || 'E-Gramin Dashboard'}
               </h1>
-              <p className="text-[11px] text-emerald-300/90 font-medium tracking-wide mt-1 truncate">
+              <p className="text-[11px] text-primary-300/90 font-medium tracking-wide mt-1 truncate">
                 {themeConfig?.brandTagline || 'Client Management'}
               </p>
             </div>

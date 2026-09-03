@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* ── Theme Primary (brand) — drives every color family below ────── */
+  /* ── Theme Primary (brand) — dynamically populated by theme engine ── */
   --color-primary-50: var(--color-primary-50, #ecfdf6);
   --color-primary-100: var(--color-primary-100, #d0fbe7);
   --color-primary-200: var(--color-primary-200, #a3f5d4);
@@ -14,153 +14,18 @@
   --color-primary-900: var(--color-primary-900, #07503d);
   --color-primary-950: var(--color-primary-950, #042b20);
 
-  /* ── ALL accent color families follow the active theme ─────────────
-     Every bg-/text-/border-/ring-* utility in these families resolves
-     to the theme primary shade, so applying a new theme recolors the
-     entire dashboard and every component automatically. */
-  --color-indigo-50: var(--color-primary-50, #eef2ff);
-  --color-indigo-100: var(--color-primary-100, #e0e7ff);
-  --color-indigo-200: var(--color-primary-200, #c7d2fe);
-  --color-indigo-300: var(--color-primary-300, #a5b4fc);
-  --color-indigo-400: var(--color-primary-400, #818cf8);
-  --color-indigo-500: var(--color-primary-500, #6366f1);
-  --color-indigo-600: var(--color-primary-600, #4f46e5);
-  --color-indigo-700: var(--color-primary-700, #4338ca);
-  --color-indigo-800: var(--color-primary-800, #3730a3);
-  --color-indigo-900: var(--color-primary-900, #312e81);
-  --color-indigo-950: var(--color-primary-950, #1e1b4b);
-
-  --color-emerald-50: var(--color-primary-50, #ecfdf6);
-  --color-emerald-100: var(--color-primary-100, #d0fbe7);
-  --color-emerald-200: var(--color-primary-200, #a3f5d4);
-  --color-emerald-300: var(--color-primary-300, #6ce8bc);
-  --color-emerald-400: var(--color-primary-400, #37d3a2);
-  --color-emerald-500: var(--color-primary-500, #12b887);
-  --color-emerald-600: var(--color-primary-600, #059a6f);
-  --color-emerald-700: var(--color-primary-700, #047c5a);
-  --color-emerald-800: var(--color-primary-800, #066349);
-  --color-emerald-900: var(--color-primary-900, #07503d);
-  --color-emerald-950: var(--color-primary-950, #042b20);
-
-  --color-purple-50: var(--color-primary-50, #f5f3ff);
-  --color-purple-100: var(--color-primary-100, #ede9fe);
-  --color-purple-200: var(--color-primary-200, #ddd6fe);
-  --color-purple-300: var(--color-primary-300, #c4b5fd);
-  --color-purple-400: var(--color-primary-400, #a78bfa);
-  --color-purple-500: var(--color-primary-500, #8b5cf6);
-  --color-purple-600: var(--color-primary-600, #7c3aed);
-  --color-purple-700: var(--color-primary-700, #6d28d9);
-  --color-purple-800: var(--color-primary-800, #5b21b6);
-  --color-purple-900: var(--color-primary-900, #4c1d95);
-  --color-purple-950: var(--color-primary-950, #2e1065);
-
-  --color-violet-50: var(--color-primary-50, #f5f3ff);
-  --color-violet-100: var(--color-primary-100, #ede9fe);
-  --color-violet-200: var(--color-primary-200, #ddd6fe);
-  --color-violet-300: var(--color-primary-300, #c4b5fd);
-  --color-violet-400: var(--color-primary-400, #a78bfa);
-  --color-violet-500: var(--color-primary-500, #8b5cf6);
-  --color-violet-600: var(--color-primary-600, #7c3aed);
-  --color-violet-700: var(--color-primary-700, #6d28d9);
-  --color-violet-800: var(--color-primary-800, #5b21b6);
-  --color-violet-900: var(--color-primary-900, #4c1d95);
-  --color-violet-950: var(--color-primary-950, #2e1065);
-
-  --color-cyan-50: var(--color-primary-50, #ecfeff);
-  --color-cyan-100: var(--color-primary-100, #cffafe);
-  --color-cyan-200: var(--color-primary-200, #a5f3fc);
-  --color-cyan-300: var(--color-primary-300, #67e8f9);
-  --color-cyan-400: var(--color-primary-400, #22d3ee);
-  --color-cyan-500: var(--color-primary-500, #06b6d4);
-  --color-cyan-600: var(--color-primary-600, #0891b2);
-  --color-cyan-700: var(--color-primary-700, #0e7490);
-  --color-cyan-800: var(--color-primary-800, #155e75);
-  --color-cyan-900: var(--color-primary-900, #164e63);
-  --color-cyan-950: var(--color-primary-950, #083344);
-
-  --color-amber-50: var(--color-primary-50, #fffbeb);
-  --color-amber-100: var(--color-primary-100, #fef3c7);
-  --color-amber-200: var(--color-primary-200, #fde68a);
-  --color-amber-300: var(--color-primary-300, #fcd34d);
-  --color-amber-400: var(--color-primary-400, #fbbf24);
-  --color-amber-500: var(--color-primary-500, #f59e0b);
-  --color-amber-600: var(--color-primary-600, #d97706);
-  --color-amber-700: var(--color-primary-700, #b45309);
-  --color-amber-800: var(--color-primary-800, #92400e);
-  --color-amber-900: var(--color-primary-900, #78350f);
-  --color-amber-950: var(--color-primary-950, #451a03);
-
-  --color-rose-50: var(--color-primary-50, #fff1f2);
-  --color-rose-100: var(--color-primary-100, #ffe4e6);
-  --color-rose-200: var(--color-primary-200, #fecdd3);
-  --color-rose-300: var(--color-primary-300, #fda4af);
-  --color-rose-400: var(--color-primary-400, #fb7185);
-  --color-rose-500: var(--color-primary-500, #f43f5e);
-  --color-rose-600: var(--color-primary-600, #e11d48);
-  --color-rose-700: var(--color-primary-700, #be123c);
-  --color-rose-800: var(--color-primary-800, #9f1239);
-  --color-rose-900: var(--color-primary-900, #881337);
-  --color-rose-950: var(--color-primary-950, #4c0519);
-
-  --color-blue-50: var(--color-primary-50, #eff6ff);
-  --color-blue-100: var(--color-primary-100, #dbeafe);
-  --color-blue-200: var(--color-primary-200, #bfdbfe);
-  --color-blue-300: var(--color-primary-300, #93c5fd);
-  --color-blue-400: var(--color-primary-400, #60a5fa);
-  --color-blue-500: var(--color-primary-500, #3b82f6);
-  --color-blue-600: var(--color-primary-600, #2563eb);
-  --color-blue-700: var(--color-primary-700, #1d4ed8);
-  --color-blue-800: var(--color-primary-800, #1e40af);
-  --color-blue-900: var(--color-primary-900, #1e3a8a);
-  --color-blue-950: var(--color-primary-950, #172554);
-
-  --color-red-50: var(--color-primary-50, #fef2f2);
-  --color-red-100: var(--color-primary-100, #fee2e2);
-  --color-red-200: var(--color-primary-200, #fecaca);
-  --color-red-300: var(--color-primary-300, #fca5a5);
-  --color-red-400: var(--color-primary-400, #f87171);
-  --color-red-500: var(--color-primary-500, #ef4444);
-  --color-red-600: var(--color-primary-600, #dc2626);
-  --color-red-700: var(--color-primary-700, #b91c1c);
-  --color-red-800: var(--color-primary-800, #991b1b);
-  --color-red-900: var(--color-primary-900, #7f1d1d);
-  --color-red-950: var(--color-primary-950, #450a0a);
-
-  --color-orange-50: var(--color-primary-50, #fff7ed);
-  --color-orange-100: var(--color-primary-100, #ffedd5);
-  --color-orange-200: var(--color-primary-200, #fed7aa);
-  --color-orange-300: var(--color-primary-300, #fdba74);
-  --color-orange-400: var(--color-primary-400, #fb923c);
-  --color-orange-500: var(--color-primary-500, #f97316);
-  --color-orange-600: var(--color-primary-600, #ea580c);
-  --color-orange-700: var(--color-primary-700, #c2410c);
-  --color-orange-800: var(--color-primary-800, #9a3412);
-  --color-orange-900: var(--color-primary-900, #7c2d12);
-  --color-orange-950: var(--color-primary-950, #431407);
-
-  --color-yellow-50: var(--color-primary-50, #fefce8);
-  --color-yellow-100: var(--color-primary-100, #fef9c3);
-  --color-yellow-200: var(--color-primary-200, #fef08a);
-  --color-yellow-300: var(--color-primary-300, #fde047);
-  --color-yellow-400: var(--color-primary-400, #facc15);
-  --color-yellow-500: var(--color-primary-500, #eab308);
-  --color-yellow-600: var(--color-primary-600, #ca8a04);
-  --color-yellow-700: var(--color-primary-700, #a16207);
-  --color-yellow-800: var(--color-primary-800, #854d0e);
-  --color-yellow-900: var(--color-primary-900, #713f12);
-  --color-yellow-950: var(--color-primary-950, #422006);
-
-  --color-teal-50: var(--color-primary-50, #f0fdfa);
-  --color-teal-100: var(--color-primary-100, #ccfbf1);
-  --color-teal-200: var(--color-primary-200, #99f6e4);
-  --color-teal-300: var(--color-primary-300, #5eead4);
-  --color-teal-400: var(--color-primary-400, #2dd4bf);
-  --color-teal-500: var(--color-primary-500, #14b8a6);
-  --color-teal-600: var(--color-primary-600, #0d9488);
-  --color-teal-700: var(--color-primary-700, #0f766e);
-  --color-teal-800: var(--color-primary-800, #115e59);
-  --color-teal-900: var(--color-primary-900, #134e4a);
-  --color-teal-950: var(--color-primary-950, #042f2e);
+  /* ── Theme Brand alias ── */
+  --color-brand-50: var(--color-primary-50, #ecfdf6);
+  --color-brand-100: var(--color-primary-100, #d0fbe7);
+  --color-brand-200: var(--color-primary-200, #a3f5d4);
+  --color-brand-300: var(--color-primary-300, #6ce8bc);
+  --color-brand-400: var(--color-primary-400, #37d3a2);
+  --color-brand-500: var(--color-primary-500, #12b887);
+  --color-brand-600: var(--color-primary-600, #059a6f);
+  --color-brand-700: var(--color-primary-700, #047c5a);
+  --color-brand-800: var(--color-primary-800, #066349);
+  --color-brand-900: var(--color-primary-900, #07503d);
+  --color-brand-950: var(--color-primary-950, #042b20);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
