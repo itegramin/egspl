@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, PriorityBadge, TypeBadge, DeletionPendingBadge } from '../common/Badge';
@@ -15,9 +15,13 @@ import {
   UserCheck,
   Calendar,
   RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  ArrowDownUp,
 } from 'lucide-react';
-import { RequestType, RequestStatus, RequestPriority } from '../../types';
+import { RequestType, RequestStatus, RequestPriority, HoldingWithdrawRequest } from '../../types';
 import { formatShortDateIST } from '../../lib/dateUtils';
+import { exportRequestsToCSV } from '../../lib/storage';
 
 interface RequestListProps {
   title?: string;
@@ -31,21 +35,26 @@ export const RequestList: React.FC<RequestListProps> = ({
   forceType,
 }) => {
   const {
-    filteredRequests,
-    filters,
-    setFilters,
-    resetFilters,
+    requests,
     setActiveRequest,
     openCreateModal,
-    triggerExportCSV,
     updateRequestStatus,
     assignOperator,
     permissions,
     syncWithSupabase,
     toast,
   } = useApp();
-  const { user, operators } = useAuth();
+  const { user, operators, allUsers } = useAuth();
+
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>(forceType || 'all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
+  const [assignedFilter, setAssignedFilter] = useState<string>(user?.role === 'operator' ? 'mine' : 'all');
+  const [sortBy, setSortBy] = useState<string>('oldest_pending'); // Default: oldest on not completed request first
 
   const handleRefresh = async () => {
     if (isSyncing) return;
@@ -64,11 +73,216 @@ export const RequestList: React.FC<RequestListProps> = ({
   const canChangeStatus = rolePerm?.canChangeStatus;
   const canAssign = rolePerm?.canAssignOperator;
   const canCreate = user?.role === 'client' && (rolePerm?.canCreateRequest ?? true);
+  const isStaff = user?.role === 'admin' || user?.role === 'operator';
 
-  // If forceType is provided, filter specifically for this view
-  const displayRequests = forceType
-    ? filteredRequests.filter(r => r.type === forceType)
-    : filteredRequests;
+  const staffUsers = useMemo(
+    () => (allUsers || []).filter(u => u.role === 'operator' || u.role === 'admin'),
+    [allUsers]
+  );
+
+  // Clients only see their own requests
+  const baseRequests = useMemo(() => {
+    return requests.filter(r => {
+      if (user?.role === 'client' && r.clientId !== user.id) return false;
+      return true;
+    });
+  }, [requests, user]);
+
+  // Filtered and Sorted Display List
+  const displayRequests = useMemo(() => {
+    const list = baseRequests.filter(r => {
+      // Type filter
+      const activeType = forceType || typeFilter;
+      if (activeType !== 'all' && r.type !== activeType) return false;
+
+      // Staff / Assigned filter
+      if (user?.role === 'operator') {
+        if (assignedFilter === 'mine') {
+          const isMyOp = r.assignedOperatorId === user.id;
+          const isMyAuth = r.type === 'withdraw' && (r as HoldingWithdrawRequest).assignedAuthorizerId === user.id;
+          if (!isMyOp && !isMyAuth) return false;
+        } else if (assignedFilter === 'all') {
+          const isAssigned = Boolean(r.assignedOperatorId && r.assignedOperatorId.trim() !== '');
+          const hasAuth =
+            r.type === 'withdraw' &&
+            Boolean(
+              (r as HoldingWithdrawRequest).assignedAuthorizerId &&
+              (r as HoldingWithdrawRequest).assignedAuthorizerId?.trim() !== ''
+            );
+          if (!isAssigned && !hasAuth) return false;
+        }
+      } else if (user?.role === 'admin') {
+        if (assignedFilter === 'unassigned') {
+          if (r.assignedOperatorId) return false;
+        } else if (assignedFilter !== 'all') {
+          const isSelectedOp = r.assignedOperatorId === assignedFilter;
+          const isSelectedAuth =
+            r.type === 'withdraw' &&
+            (r as HoldingWithdrawRequest).assignedAuthorizerId === assignedFilter;
+          if (!isSelectedOp && !isSelectedAuth) return false;
+        }
+      }
+
+      // Status filter
+      if (statusFilter !== 'all') {
+        if (statusFilter === 'pending_deletion') {
+          if (!r.deleteRequested) return false;
+        } else if (r.status !== statusFilter) {
+          return false;
+        }
+      }
+
+      // Priority filter
+      if (priorityFilter !== 'all' && r.priority !== priorityFilter) return false;
+
+      // Date range filter
+      if (dateRangeFilter !== 'all') {
+        const created = new Date(r.createdAt).getTime();
+        const now = Date.now();
+        const oneDay = 24 * 60 * 60 * 1000;
+        if (dateRangeFilter === 'today' && now - created > oneDay) return false;
+        if (dateRangeFilter === '7d' && now - created > 7 * oneDay) return false;
+        if (dateRangeFilter === '30d' && now - created > 30 * oneDay) return false;
+        if (dateRangeFilter === '90d' && now - created > 90 * oneDay) return false;
+      }
+
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchNumber = r.ticketNumber.toLowerCase().includes(q);
+        const matchTitle = r.title.toLowerCase().includes(q);
+        const matchDesc = r.description.toLowerCase().includes(q);
+        const matchClient = r.clientName.toLowerCase().includes(q);
+        const matchCompany = (r.clientCompany || '').toLowerCase().includes(q);
+        const matchEmail = (r.clientEmail || '').toLowerCase().includes(q);
+        const matchOperator = (r.assignedOperatorName || '').toLowerCase().includes(q);
+        const matchAuthorizer = (r.assignedAuthorizerName || '').toLowerCase().includes(q);
+        const matchAmount =
+          (r.type === 'deposit' || r.type === 'withdraw') &&
+          String((r as any).amount || '').includes(q);
+
+        if (
+          !matchNumber &&
+          !matchTitle &&
+          !matchDesc &&
+          !matchClient &&
+          !matchCompany &&
+          !matchEmail &&
+          !matchOperator &&
+          !matchAuthorizer &&
+          !matchAmount
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Requirement: "make it oldest on not completed request first by default."
+    return list.sort((a, b) => {
+      if (sortBy === 'oldest_pending') {
+        const isNotDoneA = a.status !== 'completed' && a.status !== 'rejected';
+        const isNotDoneB = b.status !== 'completed' && b.status !== 'rejected';
+
+        // 1. Not completed requests come first
+        if (isNotDoneA && !isNotDoneB) return -1;
+        if (!isNotDoneA && isNotDoneB) return 1;
+
+        // 2. Both are not completed: OLDEST first (ascending createdAt)
+        if (isNotDoneA && isNotDoneB) {
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        }
+
+        // 3. Both are completed: newest first
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+
+      if (sortBy === 'newest') {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+
+      if (sortBy === 'oldest') {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+
+      if (sortBy === 'priority') {
+        const pMap = { urgent: 0, high: 1, medium: 2, low: 3 };
+        return (pMap[a.priority] ?? 3) - (pMap[b.priority] ?? 3);
+      }
+
+      if (sortBy === 'amount_high') {
+        const amtA = (a as any).amount || 0;
+        const amtB = (b as any).amount || 0;
+        return amtB - amtA;
+      }
+
+      if (sortBy === 'amount_low') {
+        const amtA = (a as any).amount || 0;
+        const amtB = (b as any).amount || 0;
+        return amtA - amtB;
+      }
+
+      if (sortBy === 'recently_updated') {
+        return new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime();
+      }
+
+      return 0;
+    });
+  }, [
+    baseRequests,
+    forceType,
+    typeFilter,
+    assignedFilter,
+    user,
+    statusFilter,
+    priorityFilter,
+    dateRangeFilter,
+    searchQuery,
+    sortBy,
+  ]);
+
+  const isFiltered = Boolean(
+    searchQuery.trim() ||
+    (!forceType && typeFilter !== 'all') ||
+    statusFilter !== 'all' ||
+    priorityFilter !== 'all' ||
+    dateRangeFilter !== 'all' ||
+    (user?.role === 'operator' ? assignedFilter !== 'mine' : assignedFilter !== 'all') ||
+    sortBy !== 'oldest_pending'
+  );
+
+  const activeFiltersCount = [
+    searchQuery.trim() !== '',
+    !forceType && typeFilter !== 'all',
+    statusFilter !== 'all',
+    priorityFilter !== 'all',
+    dateRangeFilter !== 'all',
+    user?.role === 'operator' ? assignedFilter !== 'mine' : assignedFilter !== 'all',
+    sortBy !== 'oldest_pending',
+  ].filter(Boolean).length;
+
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setTypeFilter(forceType || 'all');
+    setStatusFilter('all');
+    setPriorityFilter('all');
+    setDateRangeFilter('all');
+    setAssignedFilter(user?.role === 'operator' ? 'mine' : 'all');
+    setSortBy('oldest_pending');
+  };
+
+  const handleExportCSV = () => {
+    exportRequestsToCSV(
+      displayRequests,
+      `service_requests_${user?.role || 'export'}_${new Date().toISOString().split('T')[0]}.csv`
+    );
+    toast(`Exported ${displayRequests.length} requests to CSV.`, 'success');
+  };
+
+  const openCount = baseRequests.filter(
+    r => r.status !== 'completed' && r.status !== 'rejected'
+  ).length;
 
   return (
     <div id="request-list-view" className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
@@ -96,7 +310,7 @@ export const RequestList: React.FC<RequestListProps> = ({
           </button>
           <button
             id="export-csv-table-btn"
-            onClick={triggerExportCSV}
+            onClick={handleExportCSV}
             className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs"
           >
             <Download className="w-4 h-4 text-slate-400" />
@@ -116,144 +330,259 @@ export const RequestList: React.FC<RequestListProps> = ({
         </div>
       </div>
 
-      {/* Advanced Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
-        <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800/80 pb-3">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-400">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Filters & Search</span>
+      {/* Advanced Filter Bar (Collapsible) */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
+        {/* Top Toolbar: Search + Collapse Toggle + Reset */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+          {/* Search bar */}
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by ticket #, title, client, keyword, amount..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/60 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
           </div>
 
-          {(filters.searchQuery ||
-            filters.typeFilter !== 'all' ||
-            filters.statusFilter !== 'all' ||
-            filters.priorityFilter !== 'all' ||
-            filters.operatorFilter !== 'all' ||
-            filters.dateRange !== 'all') && (
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Toggle Filters Menu Button */}
+            <button
+              type="button"
+              id="toggle-requests-filters-btn"
+              onClick={() => setIsFilterExpanded(prev => !prev)}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                isFilterExpanded || activeFiltersCount > 0
+                  ? 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 shadow-xs'
+                  : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+              title={isFilterExpanded ? 'Collapse filter menu' : 'Expand filter menu'}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Filters</span>
+              {activeFiltersCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-indigo-600 text-white">
+                  {activeFiltersCount}
+                </span>
+              )}
+              {isFilterExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5 ml-0.5 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 ml-0.5 text-slate-400" />
+              )}
+            </button>
+
+            {/* Reset Button */}
+            {isFiltered && (
               <button
-                onClick={resetFilters}
-                className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
+                type="button"
+                onClick={handleResetFilters}
+                className="px-2.5 sm:px-3 py-2 rounded-xl text-xs font-semibold bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 transition-colors flex items-center gap-1"
+                title="Reset all filters and sorting to defaults"
               >
-                <RotateCcw className="w-3 h-3" />
-                Reset Filters
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Reset</span>
               </button>
             )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 text-xs">
-          {/* Search Box */}
-          <div className="sm:col-span-2">
-            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-              Search Keywords
-            </label>
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search ticket, title, client..."
-                value={filters.searchQuery}
-                onChange={(e) => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              />
+        {/* Collapsible Section */}
+        {isFilterExpanded && (
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3 animate-in fade-in-50 duration-200">
+            {/* Filter Dropdowns Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              {/* Type Filter (hidden if forceType is preset) */}
+              {!forceType && (
+                <div className="relative">
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value)}
+                    className="w-full pl-2.5 pr-7 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="support">Technical Support</option>
+                    <option value="deposit">Holding Deposit</option>
+                    <option value="withdraw">Holding Withdraw</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                </div>
+              )}
+
+              {/* Status Filter */}
+              <div className="relative">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full pl-2.5 pr-7 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="pending_deletion">Pending Deletion</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Priority Filter */}
+              <div className="relative">
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className="w-full pl-2.5 pr-7 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Date Range Filter */}
+              <div className="relative">
+                <select
+                  value={dateRangeFilter}
+                  onChange={(e) => setDateRangeFilter(e.target.value)}
+                  className="w-full pl-2.5 pr-7 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                >
+                  <option value="all">All Time</option>
+                  <option value="today">Today</option>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="90d">Last 90 Days</option>
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+
+              {/* Staff / Assigned Operator filter for staff */}
+              {isStaff && (
+                <div className="relative">
+                  <select
+                    value={assignedFilter}
+                    onChange={(e) => setAssignedFilter(e.target.value)}
+                    className="w-full pl-2.5 pr-7 py-2 text-xs rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                  >
+                    {user?.role === 'operator' ? (
+                      <>
+                        <option value="mine">Assigned to Me</option>
+                        <option value="all">All Assigned Staff</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="all">All Assignments</option>
+                        <option value="unassigned">Unassigned</option>
+                        {staffUsers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.role})
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-400 pointer-events-none" />
+                </div>
+              )}
+
+              {/* Sort Dropdown */}
+              <div className={`relative ${!isStaff ? 'col-span-2' : ''}`}>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full pl-7 pr-7 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+                >
+                  <option value="oldest_pending">Oldest Open First (Default)</option>
+                  <option value="newest">Newest Created</option>
+                  <option value="oldest">Oldest Created</option>
+                  <option value="priority">Highest Priority</option>
+                  <option value="amount_high">Highest Amount</option>
+                  <option value="amount_low">Lowest Amount</option>
+                  <option value="recently_updated">Recently Updated</option>
+                </select>
+                <ArrowDownUp className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Status Strip & Guidance */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-3">
+                <span>
+                  Showing <strong className="text-slate-700 dark:text-slate-200">{displayRequests.length}</strong> of{' '}
+                  <strong className="text-slate-700 dark:text-slate-200">{baseRequests.length}</strong> service requests
+                </span>
+                <span className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-medium">
+                  <Clock className="w-3 h-3" />
+                  {openCount} Open Requests
+                </span>
+              </div>
+
+              {isFiltered && (
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset all filters
+                </button>
+              )}
             </div>
           </div>
+        )}
 
-          {/* Type Filter (hidden if forceType is preset) */}
-          {!forceType && (
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                Request Type
-              </label>
-              <select
-                value={filters.typeFilter}
-                onChange={(e) => setFilters(prev => ({ ...prev, typeFilter: e.target.value as any }))}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              >
-                <option value="all">All Types</option>
-                <option value="support">Technical Support</option>
-                <option value="deposit">Holding Deposit</option>
-                <option value="withdraw">Holding Withdraw</option>
-              </select>
-            </div>
-          )}
-
-          {/* Status Filter */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-              Lifecycle Status
-            </label>
-            <select
-              value={filters.statusFilter}
-              onChange={(e) => setFilters(prev => ({ ...prev, statusFilter: e.target.value as any }))}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+        {/* Active Filter Chips when collapsed */}
+        {!isFilterExpanded && isFiltered && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800/70 text-[11px]">
+            <span className="text-slate-400 font-medium">Active:</span>
+            {searchQuery.trim() && (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                "{searchQuery}"
+              </span>
+            )}
+            {!forceType && typeFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium capitalize">
+                Type: {typeFilter}
+              </span>
+            )}
+            {statusFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium capitalize">
+                Status: {statusFilter.replace('_', ' ')}
+              </span>
+            )}
+            {priorityFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium capitalize">
+                Priority: {priorityFilter}
+              </span>
+            )}
+            {dateRangeFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                Period: {dateRangeFilter}
+              </span>
+            )}
+            {isStaff && (user?.role === 'operator' ? assignedFilter !== 'mine' : assignedFilter !== 'all') && (
+              <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium">
+                Staff: {assignedFilter === 'mine' ? 'Assigned to Me' : assignedFilter === 'all' ? 'All' : assignedFilter === 'unassigned' ? 'Unassigned' : staffUsers.find(u => u.id === assignedFilter)?.name || assignedFilter}
+              </span>
+            )}
+            {sortBy !== 'oldest_pending' && (
+              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                Sort: {sortBy.replace('_', ' ')}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsFilterExpanded(true)}
+              className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold ml-1"
             >
-              <option value="all">All Statuses</option>
-              <option value="pending">Pending</option>
-              <option value="in_progress">In Progress</option>
-              <option value="completed">Completed</option>
-              <option value="rejected">Rejected</option>
-              <option value="pending_deletion">Pending Deletion Approval</option>
-            </select>
+              Edit filters →
+            </button>
           </div>
-
-          {/* Priority Filter */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-              Priority
-            </label>
-            <select
-              value={filters.priorityFilter}
-              onChange={(e) => setFilters(prev => ({ ...prev, priorityFilter: e.target.value as any }))}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            >
-              <option value="all">All Priorities</option>
-              <option value="urgent">Urgent</option>
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-
-          {/* Date Range */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-              Date Period
-            </label>
-            <select
-              value={filters.dateRange}
-              onChange={(e) => setFilters(prev => ({ ...prev, dateRange: e.target.value as any }))}
-              className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-            >
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
-              <option value="90d">Last 90 Days</option>
-            </select>
-          </div>
-
-          {/* Operator Filter (Staff Only) */}
-          {user.role !== 'client' && (
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
-                Assigned Operator
-              </label>
-              <select
-                value={filters.operatorFilter}
-                onChange={(e) => setFilters(prev => ({ ...prev, operatorFilter: e.target.value }))}
-                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-              >
-                <option value="all">All Operators</option>
-                <option value="unassigned">Unassigned</option>
-                {operators.map(op => (
-                  <option key={op.id} value={op.id}>
-                    {op.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Requests Table */}
@@ -271,7 +600,7 @@ export const RequestList: React.FC<RequestListProps> = ({
             </p>
             <div className="mt-4 flex items-center gap-3">
               <button
-                onClick={resetFilters}
+                onClick={handleResetFilters}
                 className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors"
               >
                 Reset Filters

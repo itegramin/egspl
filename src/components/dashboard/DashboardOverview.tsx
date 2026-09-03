@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, PriorityBadge, TypeBadge } from '../common/Badge';
@@ -21,13 +21,21 @@ import {
   TrendingUp,
   ArrowRight,
   FileText,
-  Trash2
+  Trash2,
+  Megaphone,
+  X,
+  Info,
+  CheckCircle,
+  AlertOctagon,
 } from 'lucide-react';
 import { HoldingDepositRequest, HoldingWithdrawRequest } from '../../types';
 
 export const DashboardOverview: React.FC = () => {
-  const { requests, filteredRequests, setActiveRequest, openCreateModal, triggerExportCSV, setCurrentPage, setFilters, permissions } = useApp();
+  const { requests, filteredRequests, setActiveRequest, openCreateModal, triggerExportCSV, setCurrentPage, setFilters, permissions, activeGlobalNotice } = useApp();
   const { user } = useAuth();
+
+  // Session-level dismiss state for the global notice banner
+  const [dismissedNoticeId, setDismissedNoticeId] = useState<string | null>(null);
 
   // Role-filtered requests for metrics
   const userVisibleReqs = requests.filter(r => user.role !== 'client' || r.clientId === user.id);
@@ -90,7 +98,7 @@ export const DashboardOverview: React.FC = () => {
             <button
               id="dashboard-new-request-btn"
               onClick={() => openCreateModal('support')}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white text-xs sm:text-sm font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all"
+              className="px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 active:scale-98 text-white text-xs sm:text-sm font-bold shadow-lg shadow-primary-600/30 flex items-center gap-2 transition-all"
             >
               <Plus className="w-4 h-4" />
               <span>Create Request</span>
@@ -99,12 +107,58 @@ export const DashboardOverview: React.FC = () => {
         </div>
       </motion.div>
 
+      {/* ── Global Notice Banner (all roles, session-dismissable) ── */}
+      {activeGlobalNotice && activeGlobalNotice.id !== dismissedNoticeId && (() => {
+        const palette = {
+          info:    { bg: 'bg-blue-50 dark:bg-blue-950/40',    border: 'border-blue-200 dark:border-blue-800/80',    text: 'text-blue-900 dark:text-blue-100',    sub: 'text-blue-700 dark:text-blue-300/80',    icon: <Info className="w-5 h-5" />,          iconBg: 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400',  btn: 'bg-blue-600 hover:bg-blue-700' },
+          success: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800/80', text: 'text-emerald-900 dark:text-emerald-100', sub: 'text-emerald-700 dark:text-emerald-300/80', icon: <CheckCircle className="w-5 h-5" />,  iconBg: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400', btn: 'bg-emerald-600 hover:bg-emerald-700' },
+          warning: { bg: 'bg-amber-50 dark:bg-amber-950/40',   border: 'border-amber-200 dark:border-amber-800/80',   text: 'text-amber-900 dark:text-amber-100',   sub: 'text-amber-700 dark:text-amber-300/80',   icon: <AlertTriangle className="w-5 h-5" />, iconBg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400',   btn: 'bg-amber-600 hover:bg-amber-700' },
+          error:   { bg: 'bg-red-50 dark:bg-red-950/40',      border: 'border-red-200 dark:border-red-800/80',      text: 'text-red-900 dark:text-red-100',      sub: 'text-red-700 dark:text-red-300/80',      icon: <AlertOctagon className="w-5 h-5" />,  iconBg: 'bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400',       btn: 'bg-red-600 hover:bg-red-700' },
+        };
+        const p = palette[activeGlobalNotice.type] || palette.info;
+        return (
+          <div className={`p-4 rounded-xl border flex items-start gap-3 ${p.bg} ${p.border}`}>
+            <div className={`p-2 rounded-lg shrink-0 ${p.iconBg}`}>{p.icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className={`flex items-center gap-2 mb-0.5`}>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/50 dark:bg-white/10 text-current">
+                  <Megaphone className="w-2.5 h-2.5" /> Platform Notice
+                </span>
+              </div>
+              <div className={`text-xs sm:text-sm font-bold ${p.text}`}>{activeGlobalNotice.title}</div>
+              <p className={`text-xs mt-0.5 ${p.sub}`}>{activeGlobalNotice.message}</p>
+              <div className="flex items-center gap-3 mt-2">
+                <span className={`text-[11px] ${p.sub} opacity-70`}>
+                  Issued by {activeGlobalNotice.createdByName}
+                  {activeGlobalNotice.expiresAt && ` · Expires ${new Date(activeGlobalNotice.expiresAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}`}
+                </span>
+                {user.role === 'admin' && (
+                  <button
+                    onClick={() => setCurrentPage('notifications')}
+                    className={`text-[11px] font-semibold underline underline-offset-2 ${p.sub}`}
+                  >
+                    Manage Notices →
+                  </button>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setDismissedNoticeId(activeGlobalNotice.id)}
+              className={`p-1.5 rounded-lg shrink-0 opacity-60 hover:opacity-100 transition-opacity ${p.text}`}
+              title="Dismiss for this session"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Urgent Alert Banner (if any) */}
       {isStaff && (
         urgentCount > 0 && (
-          <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/80 flex items-center justify-between gap-4">
+          <div className="p-4 rounded-2xl bg-red-500/10 dark:bg-red-950/50 border border-red-500/30 dark:border-red-800/80 flex items-center justify-between gap-4 shadow-xs">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-300 shrink-0">
+              <div className="p-2.5 rounded-xl bg-red-500/20 text-red-600 dark:text-red-300 shrink-0 shadow-2xs">
                 <AlertTriangle className="w-5 h-5 animate-pulse" />
               </div>
               <div>
@@ -118,7 +172,7 @@ export const DashboardOverview: React.FC = () => {
             </div>
             <button
               onClick={() => setCurrentPage('all-requests')}
-              className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold shrink-0 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 active:scale-95 text-white text-xs font-bold shrink-0 transition-all shadow-md shadow-red-600/25"
             >
               View Urgent
             </button>
@@ -128,15 +182,15 @@ export const DashboardOverview: React.FC = () => {
 
       {/* Pending Deletion Approval Banner (Admin Only) */}
       {user.role === 'admin' && pendingDeletionCount > 0 && (
-        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="p-4 rounded-2xl bg-rose-500/10 dark:bg-rose-950/50 border border-rose-500/30 dark:border-rose-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400 shrink-0">
+            <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 shrink-0 shadow-2xs">
               <Trash2 className="w-5 h-5 animate-pulse" />
             </div>
             <div>
               <div className="text-xs sm:text-sm font-bold text-rose-900 dark:text-rose-200 flex items-center gap-2">
                 <span>{pendingDeletionCount} Request{pendingDeletionCount > 1 ? 's' : ''} Awaiting Admin Deletion Approval</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200 font-bold uppercase">
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-500/25 text-rose-900 dark:text-rose-100 font-bold uppercase tracking-wider border border-rose-500/40">
                   Action Required
                 </span>
               </div>
@@ -150,7 +204,7 @@ export const DashboardOverview: React.FC = () => {
               setFilters(prev => ({ ...prev, statusFilter: 'pending_deletion' }));
               setCurrentPage('all-requests');
             }}
-            className="px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shrink-0 transition-colors shadow-sm flex items-center gap-1.5"
+            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shrink-0 transition-all shadow-md shadow-rose-600/30 flex items-center gap-1.5"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>Review Deletion Requests ({pendingDeletionCount})</span>
@@ -176,8 +230,8 @@ export const DashboardOverview: React.FC = () => {
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Pending Actions
             </span>
-            <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform">
-              <Clock className="w-5 h-5" />
+            <div className="p-2.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:scale-110 shadow-xs shadow-amber-500/10 transition-transform">
+              <Clock className="w-5 h-5 animate-pulse" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline gap-2">
@@ -206,7 +260,7 @@ export const DashboardOverview: React.FC = () => {
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               In Progress
             </span>
-            <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform">
+            <div className="p-2.5 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 group-hover:scale-110 shadow-xs shadow-blue-500/10 transition-transform">
               <Layers className="w-5 h-5" />
             </div>
           </div>
@@ -236,7 +290,7 @@ export const DashboardOverview: React.FC = () => {
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Completed Requests
             </span>
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+            <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 shadow-xs shadow-emerald-500/10 transition-transform">
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
@@ -266,7 +320,7 @@ export const DashboardOverview: React.FC = () => {
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
               Holding Volume
             </span>
-            <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform">
+            <div className="p-2.5 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 group-hover:scale-110 shadow-xs shadow-purple-500/10 transition-transform">
               <Wallet className="w-5 h-5" />
             </div>
           </div>

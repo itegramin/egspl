@@ -69,7 +69,7 @@ export function formatDateTimeIST(
   const datePart = formatDateIST(d);
   const timePart = formatTimeIST(d);
 
-  return `${datePart}, ${timePart}${includeTimezoneLabel ? ' IST' : ''}`;
+  return `${datePart}, ${timePart}`;
 }
 
 /**
@@ -84,6 +84,20 @@ export function formatShortDateIST(dateVal: string | number | Date | null | unde
     day: 'numeric',
     month: 'short',
   }).format(d);
+}
+
+
+export function formatShortDateTime(
+  dateVal: string | number | Date | null | undefined,
+  includeTimezoneLabel = true
+): string {
+  const d = parseDate(dateVal);
+  if (!d) return '—';
+
+  const datePart = formatShortDateIST(d);
+  const timePart = formatTimeIST(d);
+
+  return `${datePart}, ${timePart}`;
 }
 
 /**

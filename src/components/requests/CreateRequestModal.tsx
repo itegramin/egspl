@@ -311,7 +311,8 @@ export const CreateRequestModal: React.FC = () => {
             <button
               id="close-create-modal-btn"
               onClick={handleClose}
-              className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+              className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-transparent hover:border-rose-200 dark:hover:border-rose-800/60 active:scale-95 transition-all"
+              title="Close modal"
             >
               <X className="w-5 h-5" />
             </button>

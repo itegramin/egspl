@@ -7,13 +7,16 @@ import {
   CmaStatus,
   RolePermissions,
   Notification,
+  NotificationType,
   AuditLog,
   PageId,
   AppView,
   RequestStatus,
   RequestPriority,
   FilterState,
-  UserRole
+  UserRole,
+  AssignmentConfig,
+  GlobalNotice,
 } from '../types';
 import {
   getStoredRequests,
@@ -27,6 +30,10 @@ import {
   DEFAULT_PERMISSIONS,
   getStoredPermissions,
   clearSensitiveStorage,
+  getStoredAssignmentConfig,
+  saveAssignmentConfig,
+  getStoredGlobalNotices,
+  saveGlobalNotices,
 } from '../lib/storage';
 import { formatAmountInWords } from '../lib/indianCurrency';
 import {
@@ -134,6 +141,8 @@ interface AppContextType {
   ) => void;
 
   assignOperator: (requestId: string, operatorId: string) => void;
+  assignAuthorizer: (requestId: string, authorizerId: string) => Promise<void>;
+  rejectRequest: (requestId: string, reason: string) => Promise<void>;
 
   addComment: (
     requestId: string,
@@ -160,6 +169,18 @@ interface AppContextType {
   markAllNotificationsAsRead: () => void;
   clearNotification: (id: string) => void;
 
+  // Global Broadcast Notices
+  globalNotices: GlobalNotice[];
+  activeGlobalNotice: GlobalNotice | null;
+  broadcastGlobalNotice: (data: {
+    title: string;
+    message: string;
+    type: NotificationType;
+    expiresAt?: string;
+  }) => void;
+  deactivateGlobalNotice: (id: string) => void;
+  deleteGlobalNotice: (id: string) => void;
+
   // Audit Logs
   auditLogs: AuditLog[];
 
@@ -180,6 +201,11 @@ interface AppContextType {
   openThemeModal: () => void;
   closeThemeModal: () => void;
 
+  // Branding Modal (admin only)
+  isBrandingModalOpen: boolean;
+  openBrandingModal: () => void;
+  closeBrandingModal: () => void;
+
   // Mobile Navigation
   isMobileSidebarOpen: boolean;
   setIsMobileSidebarOpen: (open: boolean) => void;
@@ -189,6 +215,10 @@ interface AppContextType {
   // Supabase Backend Status & Sync
   isSupabaseConnected: boolean;
   syncWithSupabase: () => Promise<void>;
+
+  // Assignment Config
+  assignmentConfig: AssignmentConfig;
+  updateAssignmentConfig: (updates: Partial<AssignmentConfig>) => void;
 
   // Utilities
   triggerExportCSV: () => void;
@@ -213,6 +243,7 @@ const VALID_PAGES: PageId[] = [
   'support',
   'holding',
   'all-requests',
+  'assignments',
   'clients',
   'analytics',
   'rbac',
@@ -231,6 +262,9 @@ const PAGE_ALIASES: Record<string, PageId> = {
   requests: 'all-requests',
   allrequests: 'all-requests',
   'all-requests': 'all-requests',
+  assignments: 'assignments',
+  'assignment-management': 'assignments',
+  tasks: 'assignments',
   audit: 'audit-logs',
   auditlogs: 'audit-logs',
   'audit-logs': 'audit-logs',
@@ -323,8 +357,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Permissions start from built-in defaults or local storage
   const [permissions, setPermissions] = useState<Record<UserRole, RolePermissions>>(() => getStoredPermissions());
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [globalNotices, setGlobalNotices] = useState<GlobalNotice[]>(() => getStoredGlobalNotices());
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean>(false);
+  const [assignmentConfig, setAssignmentConfig] = useState<AssignmentConfig>(() => getStoredAssignmentConfig());
+
+  const updateAssignmentConfig = (updates: Partial<AssignmentConfig>) => {
+    setAssignmentConfig(prev => {
+      const next = { ...prev, ...updates, rules: { ...prev.rules, ...(updates.rules || {}) } };
+      saveAssignmentConfig(next);
+      return next;
+    });
+  };
 
   const [activeRequest, setActiveRequest] = useState<ServiceRequest | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -343,6 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Dynamic Theme Config
   const [themeConfig, setThemeConfigState] = useState<ThemeConfig>(() => getStoredTheme());
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -369,6 +414,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const openThemeModal = useCallback(() => setIsThemeModalOpen(true), []);
   const closeThemeModal = useCallback(() => setIsThemeModalOpen(false), []);
+
+  const openBrandingModal = useCallback(() => setIsBrandingModalOpen(true), []);
+  const closeBrandingModal = useCallback(() => setIsBrandingModalOpen(false), []);
 
   const toggleMobileSidebar = useCallback(() => setIsMobileSidebarOpen(prev => !prev), []);
   const closeMobileSidebar = useCallback(() => setIsMobileSidebarOpen(false), []);
@@ -592,6 +640,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setNotifications([]);
       setAuditLogs([]);
       setPermissions(DEFAULT_PERMISSIONS);
+      // Global notices are intentionally kept across sign-out — they are public broadcasts.
+      // setGlobalNotices stays as-is.
     }
   }, [isAuthenticated, session]);
 
@@ -708,6 +758,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveAuditLogToSupabase(newLog).catch(() => { });
   };
 
+  // ── Auto-assignment helper ──────────────────────────────────────────────────
+  // Applies the type-wise rule from assignmentConfig to a freshly created request.
+  // Returns a (possibly patched) copy of the request.
+  const autoAssignRequest = <T extends ServiceRequest>(req: T, type: 'support' | 'deposit' | 'limit'): T => {
+    if (!assignmentConfig.autoAssignmentEnabled) return req;
+    const rule = assignmentConfig.rules[type];
+    if (!rule) return req;
+
+    const patched: T = {
+      ...req,
+      assignedOperatorId: rule.operatorId,
+      assignedOperatorName: rule.operatorName,
+      status: 'in_progress' as const,
+    };
+
+    // For limit (CMA) requests also assign the authorizer
+    if (type === 'limit' && rule.authorizerId) {
+      (patched as any).assignedAuthorizerId = rule.authorizerId;
+      (patched as any).assignedAuthorizerName = rule.authorizerName || '';
+    }
+
+    return patched;
+  };
+
   // Create Support Ticket
   const createSupportTicket = async (data: {
     title: string;
@@ -752,44 +826,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })),
     };
 
-    const updated = [newTicket, ...requests];
+    const assignedTicket = autoAssignRequest(newTicket, 'support');
+    const updated = [assignedTicket, ...requests];
     setRequests(updated);
     saveRequests(updated);
 
     // Persist to Supabase — only report success once the row is actually saved.
     try {
-      await saveRequestToSupabase(newTicket);
+      await saveRequestToSupabase(assignedTicket);
     } catch (err: any) {
       console.warn('Request not persisted to Supabase:', err.message);
-      queueRequestForRetry(newTicket);
+      queueRequestForRetry(assignedTicket);
       toast(`Saved locally — will retry syncing "${ticketNumber}".`, 'warning');
-      return newTicket;
+      return assignedTicket;
     }
 
-    recordAudit('CREATED_SUPPORT_TICKET', 'request', newTicket.id, `Ticket ${ticketNumber}: ${data.title} (${data.priority.toUpperCase()})`);
+    recordAudit('CREATED_SUPPORT_TICKET', 'request', assignedTicket.id, `Ticket ${ticketNumber}: ${data.title} (${data.priority.toUpperCase()})`);
 
     // 1. Notify the submitting client
     dispatchNotification(
       user.id,
-      `Support Ticket Created: ${ticketNumber}`,
+      `Support Request`,
       `Your ticket "${data.title}" (${data.priority.toUpperCase()}) was logged successfully.`,
       'new_request',
       'info',
-      newTicket.id
+      assignedTicket.id
     );
 
     // 2. Broadcast to all operations staff and admins
     dispatchNotification(
       'all_staff',
-      `New Support Request: ${ticketNumber}`,
-      `${user.name} submitted ticket "${data.title}" (${data.priority.toUpperCase()})`,
+      `Support Request`,
+      `${user.name} submitted ticket "${data.title}" (${data.priority.toUpperCase()})${assignedTicket.assignedOperatorId ? ` — auto-assigned to ${assignedTicket.assignedOperatorName}` : ''
+      }`,
       'new_request',
       data.priority === 'urgent' ? 'warning' : 'info',
-      newTicket.id
+      assignedTicket.id
     );
 
     toast(`Support ticket ${ticketNumber} submitted successfully!`, 'success');
-    return newTicket;
+    return assignedTicket;
   };
 
   // Create Holding Deposit Request
@@ -846,44 +922,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })),
     };
 
-    const updated = [newDeposit, ...requests];
+    const assignedDeposit = autoAssignRequest(newDeposit, 'deposit');
+    const updated = [assignedDeposit, ...requests];
     setRequests(updated);
     saveRequests(updated);
 
     // Persist to Supabase — only report success once the row is actually saved.
     try {
-      await saveRequestToSupabase(newDeposit);
+      await saveRequestToSupabase(assignedDeposit);
     } catch (err: any) {
       console.warn('Request not persisted to Supabase:', err.message);
-      queueRequestForRetry(newDeposit);
+      queueRequestForRetry(assignedDeposit);
       toast(`Saved locally — will retry syncing "${ticketNumber}".`, 'warning');
-      return newDeposit;
+      return assignedDeposit;
     }
 
-    recordAudit('CREATED_DEPOSIT_REQUEST', 'request', newDeposit.id, `Deposit request ${ticketNumber} for ${data.currency} ${data.amount.toLocaleString()}`);
+    recordAudit('CREATED_DEPOSIT_REQUEST', 'request', assignedDeposit.id, `Deposit request ${ticketNumber} for ${data.currency} ${data.amount.toLocaleString()}`);
 
     // 1. Notify the submitting client
     dispatchNotification(
       user.id,
-      `Deposit Request Submitted: ${ticketNumber}`,
+      `Deposit Request`,
       `Deposit update for ${data.currency} ${data.amount.toLocaleString()} is pending operator verification.`,
       'new_request',
       'info',
-      newDeposit.id
+      assignedDeposit.id
     );
 
     // 2. Broadcast to financial operators and admins
     dispatchNotification(
       'all_staff',
-      `Deposit Update Request: ${ticketNumber}`,
-      `${user.name} submitted a ${data.currency} ${data.amount.toLocaleString()} deposit confirmation.`,
+      `Deposit Update`,
+      `${user.name} submitted a ${data.currency} ${data.amount.toLocaleString()} deposit confirmation.${assignedDeposit.assignedOperatorId ? ` Auto-assigned to ${assignedDeposit.assignedOperatorName}.` : ''
+      }`,
       'new_request',
       'warning',
-      newDeposit.id
+      assignedDeposit.id
     );
 
     toast(`Deposit update request ${ticketNumber} logged. Operator will verify transaction.`, 'success');
-    return newDeposit;
+    return assignedDeposit;
   };
 
   // Create Holding Withdraw Request
@@ -941,44 +1019,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })),
     };
 
-    const updated = [newWithdraw, ...requests];
+    const assignedWithdraw = autoAssignRequest(newWithdraw, 'limit');
+    const updated = [assignedWithdraw, ...requests];
     setRequests(updated);
     saveRequests(updated);
 
     // Persist to Supabase — only report success once the row is actually saved.
     try {
-      await saveRequestToSupabase(newWithdraw);
+      await saveRequestToSupabase(assignedWithdraw);
     } catch (err: any) {
       console.warn('Request not persisted to Supabase:', err.message);
-      queueRequestForRetry(newWithdraw);
+      queueRequestForRetry(assignedWithdraw);
       toast(`Saved locally — will retry syncing "${ticketNumber}".`, 'warning');
-      return newWithdraw;
+      return assignedWithdraw;
     }
 
-    recordAudit('CREATED_WITHDRAWAL_REQUEST', 'request', newWithdraw.id, `Withdrawal request ${ticketNumber} for ${data.currency} ${data.amount.toLocaleString()}`);
+    recordAudit('CREATED_WITHDRAWAL_REQUEST', 'request', assignedWithdraw.id, `Withdrawal request ${ticketNumber} for ${data.currency} ${data.amount.toLocaleString()}`);
 
     // 1. Notify the submitting client
     dispatchNotification(
       user.id,
-      `Withdrawal Request Logged: ${ticketNumber}`,
+      `Withdrawal Request`,
       `Payout request for ${data.currency} ${data.amount.toLocaleString()} submitted for compliance checks.`,
       'new_request',
       'info',
-      newWithdraw.id
+      assignedWithdraw.id
     );
 
     // 2. Broadcast to staff and compliance admins
     dispatchNotification(
       'all_staff',
-      `Withdrawal Request: ${ticketNumber}`,
-      `${user.name} requested withdrawal of ${data.currency} ${data.amount.toLocaleString()}`,
+      `Withdrawal Request`,
+      `${user.name} requested withdrawal of ${data.currency} ${data.amount.toLocaleString()}.${assignedWithdraw.assignedOperatorId
+        ? ` Maker: ${assignedWithdraw.assignedOperatorName}.`
+        : ''
+      }${(assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId
+        ? ` Authorizer: ${(assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerName}.`
+        : ''
+      }`,
       'new_request',
       'warning',
-      newWithdraw.id
+      assignedWithdraw.id
     );
 
     toast(`Withdrawal request ${ticketNumber} submitted for compliance approval.`, 'success');
-    return newWithdraw;
+    return assignedWithdraw;
   };
 
   // Persist a request to Supabase with honest feedback.
@@ -1011,6 +1096,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedReq: ServiceRequest = {
         ...req,
         status: newStatus,
+        rejectionReason: newStatus === 'rejected' ? (note?.trim() || req.rejectionReason) : req.rejectionReason,
         updatedAt: now,
         resolvedAt: (newStatus === 'completed' || newStatus === 'rejected') ? now : undefined,
       };
@@ -1104,15 +1190,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reqItem.id
       );
 
-      // 2. Broadcast to staff and admin logs
-      dispatchNotification(
-        'all_staff',
-        staffTitle,
-        staffMsg,
-        'request_update',
-        isApproved ? 'success' : isRejected ? 'error' : 'info',
-        reqItem.id
-      );
+      // 2. Notify the assigned operator (Maker) — only if they are not the one performing this action
+      if (reqItem.assignedOperatorId && reqItem.assignedOperatorId !== user.id) {
+        dispatchNotification(
+          reqItem.assignedOperatorId,
+          staffTitle,
+          staffMsg,
+          'request_update',
+          isApproved ? 'success' : isRejected ? 'error' : 'info',
+          reqItem.id
+        );
+      }
+
+      // 3. Notify the assigned authorizer — only if different from actor and operator
+      if (
+        (reqItem as any).assignedAuthorizerId &&
+        (reqItem as any).assignedAuthorizerId !== user.id &&
+        (reqItem as any).assignedAuthorizerId !== reqItem.assignedOperatorId
+      ) {
+        dispatchNotification(
+          (reqItem as any).assignedAuthorizerId,
+          staffTitle,
+          staffMsg,
+          'request_update',
+          isApproved ? 'success' : isRejected ? 'error' : 'info',
+          reqItem.id
+        );
+      }
 
       if (newStatus === 'completed') {
         try {
@@ -1136,6 +1240,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Update Withdrawal CMA Step (Configure, Make, Authorize)
+  // Strictly enforces sequence: Configure -> Make -> Authorize (steps cannot be skipped)
+  // Authorizer is designated once configured & made; only assigned authorizer can authorize.
+  // Authorizer also retains permission to configure and make if needed.
   const updateWithdrawalCmaStep = async (
     requestId: string,
     step: 'configure' | 'make' | 'authorize',
@@ -1151,24 +1258,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorize: 'Authorize (A)',
     };
 
+    const target = requests.find(r => r.id === requestId && r.type === 'withdraw') as HoldingWithdrawRequest | undefined;
+    if (!target) return;
+
+    const currentCma = target.cmaStatus || {};
+
+    // 1. Strict sequence validation when checking steps:
+    if (checked) {
+      if (step === 'make') {
+        if (!currentCma.configure) {
+          toast('Sequence Violation: You must complete Configure (C) before Make (M)', 'error');
+          return;
+        }
+      } else if (step === 'authorize') {
+        if (!currentCma.configure || !currentCma.make) {
+          toast('Sequence Violation: Both Configure (C) and Make (M) must be completed before Authorize (A)', 'error');
+          return;
+        }
+
+        // Only the assigned authorizer (or admin) can authorize
+        const isAuthorizedStaff = target.assignedAuthorizerId
+          ? target.assignedAuthorizerId === user.id || user.role === 'admin'
+          : user.role === 'admin';
+
+        if (!isAuthorizedStaff) {
+          toast(
+            `Authorization Restricted: Only designated authorizer (${target.assignedAuthorizerName || 'Assigned Authorizer'}) can authorize this request`,
+            'error'
+          );
+          return;
+        }
+      }
+    }
+
     const updated = requests.map(req => {
       if (req.id !== requestId || req.type !== 'withdraw') return req;
 
       const withdrawReq = req as HoldingWithdrawRequest;
-      const currentCma = withdrawReq.cmaStatus || {};
+      const cur = withdrawReq.cmaStatus || {};
       const newCma: CmaStatus = {
-        ...currentCma,
+        ...cur,
         [step]: checked,
         [`${step}At`]: checked ? now : undefined,
         [`${step}By`]: checked ? user.name : undefined,
+        [`${step}ById`]: checked ? user.id : undefined,
       };
 
-      // The authorized amount is captured at the Configure (C) step and reused
-      // through Authorize (A). Un-checking either clears the recorded amount.
+      // Cascade resets if a prior step is unchecked:
+      if (!checked) {
+        if (step === 'configure') {
+          newCma.make = false;
+          newCma.madeAt = undefined;
+          newCma.madeBy = undefined;
+          newCma.madeById = undefined;
+          newCma.authorize = false;
+          newCma.authorizedAt = undefined;
+          newCma.authorizedBy = undefined;
+          newCma.authorizedById = undefined;
+          newCma.authorizedAmount = undefined;
+        } else if (step === 'make') {
+          newCma.authorize = false;
+          newCma.authorizedAt = undefined;
+          newCma.authorizedBy = undefined;
+          newCma.authorizedById = undefined;
+        }
+      }
+
+      // Capture authorized amount at Configure or Authorize
       let finalAuthorizedAmount = withdrawReq.authorizedAmount;
-      if (step === 'configure' || step === 'authorize') {
+      if (step === 'configure') {
         if (checked) {
-          finalAuthorizedAmount = authorizedAmount !== undefined ? authorizedAmount : (currentCma.authorizedAmount || withdrawReq.amount);
+          finalAuthorizedAmount = authorizedAmount !== undefined ? authorizedAmount : (cur.authorizedAmount || withdrawReq.amount);
           newCma.authorizedAmount = finalAuthorizedAmount;
         } else {
           finalAuthorizedAmount = undefined;
@@ -1176,8 +1336,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      // Determine new status based on CMA checkboxes:
-      // Authorize (A) checked -> automatically completed
+      // Determine new status based on CMA:
       let newStatus: RequestStatus = req.status;
       let resolvedAt = req.resolvedAt;
 
@@ -1196,7 +1355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const commentContent = step === 'authorize' && checked
-        ? `[CMA Checkpoint] Authorize (A) verified with Authorized Amount: ${withdrawReq.currency} ${finalAuthorizedAmount?.toLocaleString()} by ${user.name} (${user.role.toUpperCase()}) - Request Automatically Completed`
+        ? `[CMA Checkpoint] Authorize (A) signed off with Authorized Amount: ${withdrawReq.currency} ${finalAuthorizedAmount?.toLocaleString()} by ${user.name} (${user.role.toUpperCase()}) - Request Completed`
         : `[CMA Checkpoint] ${stepLabelMap[step]} marked as ${checked ? 'COMPLETED' : 'PENDING'} by ${user.name} (${user.role.toUpperCase()})`;
 
       const commentObj = {
@@ -1307,9 +1466,146 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'info',
         (targetReq as ServiceRequest).id
       );
+
+      // Notify the client that an operator has been assigned to their request
+      if ((targetReq as ServiceRequest).clientId) {
+        dispatchNotification(
+          (targetReq as ServiceRequest).clientId,
+          `Handler Assigned: ${(targetReq as ServiceRequest).ticketNumber}`,
+          `${operator.name} has been assigned to handle your request "${(targetReq as ServiceRequest).title}".`,
+          'assignment',
+          'info',
+          (targetReq as ServiceRequest).id
+        );
+      }
     }
 
     toast(`Assigned ${operator.name} to ticket`, 'success');
+  };
+
+  // Assign Authorizer (Checker for Limit Requests)
+  const assignAuthorizer = async (requestId: string, authorizerId: string) => {
+    const authorizer = allUsers.find(u => u.id === authorizerId);
+    if (!authorizer) return;
+
+    const now = new Date().toISOString();
+    let targetReq: ServiceRequest | undefined;
+
+    const updated = requests.map(req => {
+      if (req.id !== requestId) return req;
+      const updatedReq = {
+        ...req,
+        assignedAuthorizerId: authorizer.id,
+        assignedAuthorizerName: authorizer.name,
+        updatedAt: now,
+      };
+      targetReq = updatedReq;
+      return updatedReq;
+    });
+
+    setRequests(updated);
+    saveRequests(updated);
+
+    if (targetReq) {
+      if (activeRequest?.id === requestId) {
+        setActiveRequest(targetReq);
+      }
+      await persistRequest(targetReq);
+
+      recordAudit(
+        'ASSIGNED_AUTHORIZER',
+        'request',
+        requestId,
+        `Assigned authorizer ${authorizer.name} (${authorizer.role.toUpperCase()}) to ${(targetReq as ServiceRequest).ticketNumber}`
+      );
+
+      dispatchNotification(
+        authorizer.id,
+        `Authorizer Assignment: ${(targetReq as ServiceRequest).ticketNumber}`,
+        `You have been assigned as Authorizer for ${(targetReq as ServiceRequest).ticketNumber} (${(targetReq as ServiceRequest).title}).`,
+        'assignment',
+        'info',
+        (targetReq as ServiceRequest).id
+      );
+
+      // Notify the client that an authorizer was assigned
+      if ((targetReq as ServiceRequest).clientId) {
+        dispatchNotification(
+          (targetReq as ServiceRequest).clientId,
+          `Authorizer Assigned: ${(targetReq as ServiceRequest).ticketNumber}`,
+          `${authorizer.name} has been assigned as Authorizer for your request "${(targetReq as ServiceRequest).title}".`,
+          'assignment',
+          'info',
+          (targetReq as ServiceRequest).id
+        );
+      }
+    }
+
+    toast(`Assigned ${authorizer.name} as Authorizer`, 'success');
+  };
+
+  // Structured Request Rejection with message to client
+  const rejectRequest = async (requestId: string, reason: string) => {
+    const now = new Date().toISOString();
+    let targetReq: ServiceRequest | undefined;
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      toast('Please provide a message explaining the rejection reason', 'error');
+      return;
+    }
+
+    const updated = requests.map(req => {
+      if (req.id !== requestId) return req;
+
+      const rejectionComment = {
+        id: `cm_${Date.now()}`,
+        authorId: user.id,
+        authorName: user.name,
+        authorRole: user.role,
+        authorAvatar: user.avatarUrl,
+        content: `[Request Rejected] ${trimmedReason}`,
+        isInternal: false, // Visible to client
+        createdAt: now,
+      };
+
+      const updatedReq: ServiceRequest = {
+        ...req,
+        status: 'rejected' as RequestStatus,
+        rejectionReason: trimmedReason,
+        resolvedAt: now,
+        updatedAt: now,
+        comments: [...req.comments, rejectionComment],
+      };
+      targetReq = updatedReq;
+      return updatedReq;
+    });
+
+    setRequests(updated);
+    saveRequests(updated);
+
+    if (targetReq) {
+      setActiveRequest(targetReq);
+      await persistRequest(targetReq);
+
+      recordAudit(
+        'REJECTED_REQUEST',
+        'request',
+        requestId,
+        `Rejected ${(targetReq as ServiceRequest).ticketNumber}. Reason: ${trimmedReason}`
+      );
+
+      dispatchNotification(
+        (targetReq as ServiceRequest).clientId,
+        `Request Rejected: ${(targetReq as ServiceRequest).ticketNumber}`,
+        `Your request was rejected by ${user.name}: "${trimmedReason}"`,
+        'request_update',
+        'error',
+        (targetReq as ServiceRequest).id
+      );
+    }
+
+    toast(`Request ${(targetReq as ServiceRequest)?.ticketNumber || ''} marked as Rejected`, 'info');
   };
 
   // Add Comment / Message
@@ -1649,6 +1945,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveNotifications(updated);
   };
 
+  // ── Global Broadcast Notices ──────────────────────────────────────────────
+
+  const broadcastGlobalNotice = (data: {
+    title: string;
+    message: string;
+    type: NotificationType;
+    expiresAt?: string;
+  }) => {
+    const notice: GlobalNotice = {
+      id: `gnotice_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      title: data.title,
+      message: data.message,
+      type: data.type,
+      createdAt: new Date().toISOString(),
+      createdByName: user.name,
+      expiresAt: data.expiresAt,
+      isActive: true,
+    };
+    setGlobalNotices(prev => {
+      const updated = [notice, ...prev];
+      saveGlobalNotices(updated);
+      return updated;
+    });
+
+    // Also dispatch as a system notification so it appears in the notification log
+    dispatchNotification(
+      'all',
+      `📢 ${notice.title}`,
+      notice.message,
+      'global_notice',
+      notice.type,
+    );
+
+    toast(`Global notice broadcast to all users`, 'success');
+  };
+
+  const deactivateGlobalNotice = (id: string) => {
+    setGlobalNotices(prev => {
+      const updated = prev.map(n => n.id === id ? { ...n, isActive: false } : n);
+      saveGlobalNotices(updated);
+      return updated;
+    });
+  };
+
+  const deleteGlobalNotice = (id: string) => {
+    setGlobalNotices(prev => {
+      const updated = prev.filter(n => n.id !== id);
+      saveGlobalNotices(updated);
+      return updated;
+    });
+  };
+
+  // Derive the single most-recent active, non-expired global notice for the dashboard banner
+  const now = new Date();
+  const activeGlobalNotice: GlobalNotice | null = globalNotices.find(n => {
+    if (!n.isActive) return false;
+    if (n.expiresAt && new Date(n.expiresAt) < now) return false;
+    return true;
+  }) ?? null;
+
   // Filtered requests computation
   const filteredRequests = requests.filter(req => {
     // Role filter: clients only see their own requests
@@ -1726,6 +2082,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRequests([]);
     setPermissions(DEFAULT_PERMISSIONS);
     setNotifications([]);
+    setGlobalNotices([]);
     setAuditLogs([]);
     toast('Platform reset to original demo seed dataset.', 'info');
   };
@@ -1756,6 +2113,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateRequestStatus,
         updateWithdrawalCmaStep,
         assignOperator,
+        assignAuthorizer,
+        rejectRequest,
         addComment,
         deleteRequest,
         requestDeletion,
@@ -1770,6 +2129,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         markNotificationAsRead,
         markAllNotificationsAsRead,
         clearNotification,
+        globalNotices,
+        activeGlobalNotice,
+        broadcastGlobalNotice,
+        deactivateGlobalNotice,
+        deleteGlobalNotice,
         auditLogs,
         filters,
         setFilters,
@@ -1784,12 +2148,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsThemeModalOpen,
         openThemeModal,
         closeThemeModal,
+        isBrandingModalOpen,
+        openBrandingModal,
+        closeBrandingModal,
         isMobileSidebarOpen,
         setIsMobileSidebarOpen,
         toggleMobileSidebar,
         closeMobileSidebar,
         isSupabaseConnected,
         syncWithSupabase,
+        assignmentConfig,
+        updateAssignmentConfig,
         triggerExportCSV,
         resetAllDemoData,
         toast,

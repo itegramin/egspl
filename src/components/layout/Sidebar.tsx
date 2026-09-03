@@ -7,6 +7,7 @@ import {
   Headphones,
   WalletCards,
   Inbox,
+  UserCheck,
   Users,
   BarChart3,
   ShieldCheck,
@@ -68,6 +69,13 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
       reqs.filter(r => u.role !== 'client' || r.clientId === u.id).length,
   },
   {
+    id: 'assignments',
+    label: 'Assignments',
+    icon: UserCheck,
+    badgeCount: (reqs, u) =>
+      u.role === 'client' ? 0 : reqs.filter(r => !r.assignedOperatorId && r.status === 'pending').length,
+  },
+  {
     id: 'clients',
     label: 'User Directory',
     icon: Users,
@@ -109,6 +117,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'support',
     'holding',
     'all-requests',
+    'assignments',
     'clients',
     'analytics',
     'rbac',
@@ -121,7 +130,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'support',
     'holding',
     'all-requests',
-    'clients',
+    'assignments',
     'analytics',
     'notifications',
   ],
@@ -129,6 +138,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'dashboard',
     'support',
     'holding',
+    'notifications'
   ],
 };
 
@@ -154,14 +164,23 @@ export const Sidebar: React.FC = () => {
         {/* Brand Header */}
         <div className="flex items-center justify-between gap-3 px-2 py-3 mb-4 rounded-xl bg-slate-800/60 border border-slate-700/50">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-grad-brand flex items-center justify-center text-white shadow-lg shadow-emerald-500/25 shrink-0">
-              <Sparkles className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-lg bg-grad-brand flex items-center justify-center text-white shadow-lg shadow-primary-500/25 shrink-0 overflow-hidden">
+              {themeConfig?.brandLogoUrl ? (
+                <img
+                  src={themeConfig.brandLogoUrl}
+                  alt="Brand logo"
+                  className="w-full h-full object-contain"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : (
+                <Sparkles className="w-5 h-5" />
+              )}
             </div>
             <div className="min-w-0">
               <h1 className="font-bold text-white text-sm tracking-tight leading-none truncate">
                 {themeConfig?.brandName || 'E-Gramin Dashboard'}
               </h1>
-              <p className="text-[11px] text-emerald-300/90 font-medium tracking-wide mt-1 truncate">
+              <p className="text-[11px] text-primary-300/90 font-medium tracking-wide mt-1 truncate">
                 {themeConfig?.brandTagline || 'Client Management'}
               </p>
             </div>
@@ -200,8 +219,7 @@ export const Sidebar: React.FC = () => {
                 end={item.id === 'dashboard'}
                 onClick={closeMobileSidebar}
                 className={({ isActive }) =>
-                  `relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group overflow-hidden ${
-                    isActive ? 'text-white' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  `relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group overflow-hidden ${isActive ? 'text-white' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                   }`
                 }
               >
@@ -218,9 +236,8 @@ export const Sidebar: React.FC = () => {
 
                     <div className="relative z-10 flex items-center gap-3 truncate">
                       <Icon
-                        className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
-                          isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                        }`}
+                        className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                          }`}
                       />
                       <span className="truncate">{item.label}</span>
                     </div>
@@ -228,11 +245,10 @@ export const Sidebar: React.FC = () => {
                     <div className="relative z-10 flex items-center gap-1.5 shrink-0 ml-2">
                       {count > 0 && (
                         <span
-                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            isActive
-                              ? 'bg-white text-emerald-700'
-                              : 'bg-slate-800 text-emerald-300 border border-slate-700'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isActive
+                            ? 'bg-white text-emerald-700'
+                            : 'bg-slate-800 text-emerald-300 border border-slate-700'
+                            }`}
                         >
                           {count}
                         </span>

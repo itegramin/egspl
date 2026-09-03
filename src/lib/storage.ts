@@ -5,6 +5,8 @@ import {
   RolePermissions,
   Notification,
   AuditLog,
+  AssignmentConfig,
+  GlobalNotice,
 } from '../types';
 import { formatDateTimeIST } from './dateUtils';
 
@@ -19,6 +21,8 @@ const USERS_KEY = 'csmp_users_v1';        // Non-PII user cache (role, status, i
 const REQUESTS_KEY = 'csmp_requests_v1';
 const PERMISSIONS_KEY = 'csmp_permissions_v1';
 const NOTIFICATIONS_KEY = 'csmp_notifications_v1';
+const ASSIGNMENT_CONFIG_KEY = 'csmp_assignment_config_v1';
+const GLOBAL_NOTICES_KEY = 'csmp_global_notices_v1';
 
 // Audit logs are NOT stored in localStorage — they are fetched exclusively
 // from Supabase to prevent tampering and PII leakage.
@@ -49,7 +53,7 @@ function stripPii(user: User): SafeUserCache {
 export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: {
     role: 'admin',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
+    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -61,7 +65,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   operator: {
     role: 'operator',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'clients', 'analytics', 'notifications'],
+    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'notifications'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -73,7 +77,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   client: {
     role: 'client',
-    allowedPages: ['dashboard', 'support', 'holding'],
+    allowedPages: ['dashboard', 'support', 'holding', 'notifications'],
     canCreateRequest: true,
     canChangeStatus: false,
     canAssignOperator: false,
@@ -131,6 +135,44 @@ export function savePermissions(_perms: Record<UserRole, RolePermissions>): void
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Assignment Rules — Type-Wise Configuration
+// ─────────────────────────────────────────────────────────────────────────────
+export const DEFAULT_ASSIGNMENT_CONFIG: AssignmentConfig = {
+  autoAssignmentEnabled: false,
+  rules: {
+    limit: null,
+    support: null,
+    deposit: null,
+  },
+};
+
+export function getStoredAssignmentConfig(): AssignmentConfig {
+  try {
+    const raw = localStorage.getItem(ASSIGNMENT_CONFIG_KEY);
+    if (!raw) return DEFAULT_ASSIGNMENT_CONFIG;
+    const parsed = JSON.parse(raw);
+    return {
+      autoAssignmentEnabled: typeof parsed.autoAssignmentEnabled === 'boolean' ? parsed.autoAssignmentEnabled : false,
+      rules: {
+        limit: parsed.rules?.limit ?? null,
+        support: parsed.rules?.support ?? null,
+        deposit: parsed.rules?.deposit ?? null,
+      },
+    };
+  } catch {
+    return DEFAULT_ASSIGNMENT_CONFIG;
+  }
+}
+
+export function saveAssignmentConfig(config: AssignmentConfig): void {
+  try {
+    localStorage.setItem(ASSIGNMENT_CONFIG_KEY, JSON.stringify(config));
+  } catch {
+    // ignore
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Notifications — localStorage REMOVED
 // ─────────────────────────────────────────────────────────────────────────────
 // Notifications are fetched exclusively from Supabase and kept in-memory.
@@ -143,6 +185,30 @@ export function getStoredNotifications(): Notification[] {
 /** @deprecated Notifications are in-memory / database-only. No-op. */
 export function saveNotifications(_notifs: Notification[]): void {
   // Intentionally empty — notifications are never written to localStorage.
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Global Notices
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Returns all admin-authored global broadcast notices from localStorage. */
+export function getStoredGlobalNotices(): GlobalNotice[] {
+  try {
+    const raw = localStorage.getItem(GLOBAL_NOTICES_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as GlobalNotice[];
+  } catch {
+    return [];
+  }
+}
+
+/** Persists the full global notices array to localStorage. */
+export function saveGlobalNotices(notices: GlobalNotice[]): void {
+  try {
+    localStorage.setItem(GLOBAL_NOTICES_KEY, JSON.stringify(notices));
+  } catch {
+    // Storage quota exceeded — silently skip.
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -273,6 +339,7 @@ export function resetToDemoData(): void {
   localStorage.removeItem(REQUESTS_KEY);
   localStorage.removeItem(NOTIFICATIONS_KEY);
   localStorage.removeItem(PERMISSIONS_KEY);
+  localStorage.removeItem(GLOBAL_NOTICES_KEY);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,4 +363,5 @@ export function clearSensitiveStorage(): void {
   localStorage.removeItem('csmp_current_user_v1');
   localStorage.removeItem('csmp_auth_session_active');
   localStorage.removeItem('csmp_audit_logs_v1');
+  localStorage.removeItem(GLOBAL_NOTICES_KEY);
 }

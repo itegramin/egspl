@@ -59,6 +59,8 @@ export interface ThemeConfig {
   highContrast: boolean;
   brandName?: string;
   brandTagline?: string;
+  brandLogoUrl?: string;
+  brandIcon?: string;
 }
 
 export const THEME_PRESETS: Record<Exclude<ThemePreset, 'custom'>, ThemePresetOption> = {
@@ -349,11 +351,17 @@ export function applyTheme(config: ThemeConfig): void {
   const radius = RADIUS_VALUES[config.radius] || RADIUS_VALUES.modern;
   const font = FONT_FAMILIES[config.fontFamily] || FONT_FAMILIES.inter;
 
-  // 1. Set Primary Color Shades for Tailwind @theme & CSS vars.
-  //    Every color family (indigo, emerald, purple, violet, cyan, amber,
-  //    rose, blue) maps to these in index.css, so setting them here
-  //    recolors the entire dashboard and every component at once.
-  const THEME_COLOR_FAMILIES = ['primary', 'indigo', 'emerald', 'purple', 'violet', 'cyan', 'amber', 'rose', 'blue', 'red', 'orange', 'yellow', 'teal'];
+  // 1. Clean up any stale inline color overrides from prior configurations
+  const STALE_FAMILIES = ['indigo', 'emerald', 'purple', 'violet', 'cyan', 'amber', 'rose', 'blue', 'red', 'orange', 'yellow', 'teal'];
+  const SHADES = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'];
+  STALE_FAMILIES.forEach(family => {
+    SHADES.forEach(shade => {
+      root.style.removeProperty(`--color-${family}-${shade}`);
+    });
+  });
+
+  // 2. Set Primary & Brand Color Shades for Tailwind @theme & CSS vars
+  const THEME_COLOR_FAMILIES = ['primary', 'brand'];
   Object.entries(activeShades).forEach(([shade, hex]) => {
     THEME_COLOR_FAMILIES.forEach(family => {
       root.style.setProperty(`--color-${family}-${shade}`, hex);
@@ -361,18 +369,28 @@ export function applyTheme(config: ThemeConfig): void {
     root.style.setProperty(`--primary-${shade}`, hex); // Backward compatibility mapping
   });
 
-  // 2. Main Brand Color & Glow
+  // 3. Dynamic Brand Gradients
+  root.style.setProperty(
+    '--grad-brand',
+    `linear-gradient(135deg, ${activeShades[700]}, ${activeShades[500]}, ${activeShades[400]})`
+  );
+  root.style.setProperty(
+    '--grad-brand-deep',
+    `linear-gradient(135deg, ${activeShades[800]} 0%, ${activeShades[600]} 45%, ${activeShades[500]} 100%)`
+  );
+
+  // 4. Main Brand Color & Glow
   root.style.setProperty('--brand-primary', primaryHex);
   root.style.setProperty('--brand-primary-rgb', hexToRgb(primaryHex));
   root.style.setProperty('--app-border-radius', radius.cssRadius);
   root.style.setProperty('--app-font-family', font.fontStack);
 
-  // 3. Dark Mode Surface Overrides
+  // 5. Dark Mode Surface Overrides
   root.style.setProperty('--dark-surface-bg', surface.darkBg);
   root.style.setProperty('--dark-surface-card', surface.darkCard);
   root.style.setProperty('--dark-surface-border', surface.darkBorder);
 
-  // 4. Glow Effects
+  // 6. Glow Effects
   root.style.setProperty(
     '--brand-glow-opacity',
     config.enableGlowEffects ? '0.18' : '0'

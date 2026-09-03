@@ -1,6 +1,6 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { formatDateTimeIST } from '../../lib/dateUtils';
+import { formatShortDateTime } from '../../lib/dateUtils';
 import { Bell, Check, Trash2, X, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -71,7 +71,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
               <button
                 id="close-notifications-btn"
                 onClick={onClose}
-                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-transparent hover:border-rose-200 dark:hover:border-rose-800/60 active:scale-95 transition-all"
+                title="Close drawer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -103,34 +104,25 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({ isOpen, 
                       }
                     }
                   }}
-                  className={`group relative p-3.5 rounded-xl border transition-all cursor-pointer ${
-                    !notif.isRead
-                      ? 'bg-indigo-50/70 border-indigo-200/80 dark:bg-indigo-950/30 dark:border-indigo-900/60'
-                      : 'bg-white border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-600'
-                  }`}
+                  className={`group relative p-3.5 rounded-xl border transition-all cursor-pointer ${!notif.isRead
+                    ? 'bg-indigo-50/70 border-indigo-200/80 dark:bg-indigo-950/30 dark:border-indigo-900/60'
+                    : 'bg-white border-slate-200/80 dark:bg-slate-800/60 dark:border-slate-700/60 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-0.5">
                     <div className="flex items-start gap-2.5">
                       <span
-                        className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                          !notif.isRead ? 'bg-indigo-600 dark:bg-indigo-400' : 'bg-transparent'
-                        }`}
+                        className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${!notif.isRead ? 'bg-indigo-600 dark:bg-indigo-400' : 'bg-transparent'
+                          }`}
                       />
                       <div>
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white leading-snug">
-                          {notif.title}
+                        <div className="text-slate-900 dark:text-white leading-snug">
+                          <span className='text-sm font-semibold'>{notif.title} </span>
+                          <span className='text-xs uppercase'>| {formatShortDateTime(notif.createdAt)}</span>
                         </div>
                         <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
                           {notif.message}
                         </p>
-                        <div className="flex items-center gap-3 mt-2 text-[11px] text-slate-400">
-                          <span>{formatDateTimeIST(notif.createdAt)}</span>
-                          {notif.requestId && (
-                            <span className="inline-flex items-center gap-0.5 text-indigo-600 dark:text-indigo-400 font-medium">
-                              View Ticket <ExternalLink className="w-3 h-3" />
-                            </span>
-                          )}
-                        </div>
                       </div>
                     </div>
                     <button

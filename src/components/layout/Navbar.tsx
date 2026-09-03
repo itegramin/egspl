@@ -34,6 +34,7 @@ import {
   Menu,
   Palette,
   Timer,
+  Building,
 } from 'lucide-react';
 import { NotificationDrawer } from '../notifications/NotificationDrawer';
 import { AnimatePresence, motion } from 'motion/react';
@@ -57,6 +58,7 @@ export const Navbar: React.FC<NavbarProps> = () => {
     syncWithSupabase,
     isSupabaseConnected,
     openThemeModal,
+    openBrandingModal,
     toggleMobileSidebar,
     toast,
   } = useApp();
@@ -335,21 +337,39 @@ export const Navbar: React.FC<NavbarProps> = () => {
                           Executive Governance
                         </div>
 
-                        {/* Theme Customizer Launcher */}
+                        {/* Theme Customizer */}
                         <button
-                          id="profile-theme-customizer-btn"
+                          id="profile-theme-btn"
                           onClick={() => {
                             setIsProfileDropdownOpen(false);
                             openThemeModal();
                           }}
-                          className="w-full flex items-center justify-between px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl transition-colors mb-1"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-primary-600 dark:text-primary-400 bg-primary-50/70 dark:bg-primary-950/40 hover:bg-primary-100 dark:hover:bg-primary-900/50 rounded-xl transition-colors"
                         >
                           <div className="flex items-center gap-2.5">
-                            <Palette className="w-4 h-4 text-emerald-500" />
-                            <span>Theme & Branding</span>
+                            <Palette className="w-4 h-4 text-primary-500" />
+                            <span>Theme Customization</span>
                           </div>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-emerald-200/70 dark:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300">
-                            ALL ROLES
+                          <span className="ml-auto px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-primary-200/70 dark:bg-primary-900/80 text-primary-700 dark:text-primary-300">
+                            LIVE
+                          </span>
+                        </button>
+
+                        {/* Branding (admin only) */}
+                        <button
+                          id="profile-branding-btn"
+                          onClick={() => {
+                            setIsProfileDropdownOpen(false);
+                            openBrandingModal();
+                          }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-xl transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Building className="w-4 h-4 text-violet-500" />
+                            <span>Portal Branding</span>
+                          </div>
+                          <span className="ml-auto px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wider bg-violet-100 dark:bg-violet-900/80 text-violet-700 dark:text-violet-300">
+                            ADMIN
                           </span>
                         </button>
 
@@ -411,17 +431,17 @@ export const Navbar: React.FC<NavbarProps> = () => {
                        =================================================== */}
                     {userRole === 'operator' && (
                       <>
-                        {/* Theme Customizer Launcher (all roles) */}
+                        {/* Theme Customizer */}
                         <button
-                          id="profile-theme-customizer-btn"
+                          id="profile-theme-btn-op"
                           onClick={() => {
                             setIsProfileDropdownOpen(false);
                             openThemeModal();
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl transition-colors mb-1"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/40 rounded-xl transition-colors mb-1"
                         >
-                          <Palette className="w-4 h-4 text-emerald-500" />
-                          <span>Theme & Branding</span>
+                          <Palette className="w-4 h-4 text-primary-500" />
+                          <span>Theme Customization</span>
                         </button>
 
                         <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -475,17 +495,17 @@ export const Navbar: React.FC<NavbarProps> = () => {
                        =================================================== */}
                     {userRole === 'client' && (
                       <>
-                        {/* Theme Customizer Launcher (all roles) */}
+                        {/* Theme Customizer */}
                         <button
-                          id="profile-theme-customizer-btn"
+                          id="profile-theme-btn-cl"
                           onClick={() => {
                             setIsProfileDropdownOpen(false);
                             openThemeModal();
                           }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/70 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl transition-colors mb-1"
+                          className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs font-semibold text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/40 rounded-xl transition-colors mb-1"
                         >
-                          <Palette className="w-4 h-4 text-emerald-500" />
-                          <span>Theme & Branding</span>
+                          <Palette className="w-4 h-4 text-primary-500" />
+                          <span>Theme Customization</span>
                         </button>
 
                         <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">

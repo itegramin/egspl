@@ -46,6 +46,7 @@ export const RequestDetailModal: React.FC = () => {
     updateRequestStatus,
     updateWithdrawalCmaStep,
     assignOperator,
+    rejectRequest,
     addComment,
     deleteRequest,
     requestDeletion,
@@ -65,6 +66,8 @@ export const RequestDetailModal: React.FC = () => {
   const [authorizedAmountInput, setAuthorizedAmountInput] = useState<number | string>('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteReasonInput, setDeleteReasonInput] = useState('');
+  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
   const commentFileInputRef = useRef<HTMLInputElement | null>(null);
   const [commentAttachments, setCommentAttachments] = useState<
@@ -96,6 +99,15 @@ export const RequestDetailModal: React.FC = () => {
   const isAuthorizeDone = !!cma.authorize;
   const isAuthorized = isWithdraw && (isAuthorizeDone || req.status === 'completed');
   const authorizedAmountValue = withdrawReq?.authorizedAmount || cma.authorizedAmount || withdrawReq?.amount || 0;
+
+  // Authorizer check: only the assigned authorizer (or admin) can tick 'Authorize'
+  const isAssignedAuthorizer =
+    user.role === 'admin' ||
+    (req as any).assignedAuthorizerId === user.id;
+
+  // CMA sequence guards
+  const canMake = isConfigureDone;  // Must Configure first
+  const canAuthorize = isConfigureDone && isMakeDone && isAssignedAuthorizer;
 
   const handleSendComment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,7 +200,7 @@ export const RequestDetailModal: React.FC = () => {
                       deleteRequest(req.id);
                     }
                   }}
-                  className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                  className="p-2 text-rose-500 hover:text-white hover:bg-rose-600 rounded-xl border border-rose-200 dark:border-rose-900/60 shadow-2xs hover:shadow-md hover:shadow-rose-600/20 active:scale-95 transition-all"
                   title="Permanently delete request"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -196,7 +208,7 @@ export const RequestDetailModal: React.FC = () => {
               ) : req.deleteRequested ? (
                 <button
                   disabled
-                  className="p-2 text-rose-400 rounded-lg opacity-70 cursor-not-allowed"
+                  className="p-2 text-rose-400 rounded-xl bg-rose-500/10 border border-rose-500/20 opacity-70 cursor-not-allowed"
                   title="Deletion pending administrator approval"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -205,7 +217,7 @@ export const RequestDetailModal: React.FC = () => {
                 <button
                   id="user-request-delete-btn"
                   onClick={() => setIsDeleteModalOpen(true)}
-                  className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                  className="p-2 text-rose-500 hover:text-white hover:bg-rose-600 rounded-xl border border-rose-200 dark:border-rose-900/60 shadow-2xs hover:shadow-md hover:shadow-rose-600/20 active:scale-95 transition-all"
                   title="Request Deletion (Requires Admin Approval)"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -215,7 +227,7 @@ export const RequestDetailModal: React.FC = () => {
               <button
                 id="close-request-modal-btn"
                 onClick={() => setActiveRequest(null)}
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="p-2 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl border border-transparent hover:border-rose-200 dark:hover:border-rose-800/60 active:scale-95 transition-all"
                 title="Close modal"
               >
                 <X className="w-5 h-5" />
@@ -225,17 +237,17 @@ export const RequestDetailModal: React.FC = () => {
 
           {/* Top Alert Banner for Pending Deletion */}
           {req.deleteRequested && (
-            <div className="px-5 py-3 bg-rose-50 dark:bg-rose-950/50 border-b border-rose-200 dark:border-rose-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="px-5 py-3.5 bg-rose-500/10 dark:bg-rose-950/40 border-b border-rose-500/30 dark:border-rose-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/60 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5">
-                  <AlertTriangle className="w-4 h-4" />
+                <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-300 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 animate-pulse" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-rose-900 dark:text-rose-200">
                       Deletion Requested by {req.deleteRequestedBy || 'User'}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-200/80 dark:bg-rose-900/80 text-rose-900 dark:text-rose-200 font-bold uppercase tracking-wider">
+                    <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-500/25 text-rose-900 dark:text-rose-100 font-bold uppercase tracking-wider border border-rose-500/40">
                       Pending Admin Approval
                     </span>
                   </div>
@@ -249,7 +261,7 @@ export const RequestDetailModal: React.FC = () => {
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                   <button
                     onClick={() => rejectDeletion(req.id)}
-                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                    className="px-3.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition-all shadow-2xs"
                   >
                     Reject Request
                   </button>
@@ -259,14 +271,14 @@ export const RequestDetailModal: React.FC = () => {
                         approveDeletion(req.id);
                       }
                     }}
-                    className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+                    className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold shadow-md shadow-rose-600/30 flex items-center gap-1.5 transition-all"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Approve & Delete</span>
                   </button>
                 </div>
               ) : (
-                <span className="text-xs font-medium text-rose-600 dark:text-rose-400 italic">
+                <span className="text-xs font-semibold text-rose-600 dark:text-rose-400 italic">
                   Awaiting administrator review
                 </span>
               )}
@@ -399,7 +411,7 @@ export const RequestDetailModal: React.FC = () => {
 
                       {/* Interactive CMA Checkpoint Checkboxes */}
                       <div className="pt-3 border-t border-slate-200 dark:border-slate-700/80">
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                             <span>CMA Checkpoints</span>
@@ -408,7 +420,13 @@ export const RequestDetailModal: React.FC = () => {
                             {[isConfigureDone, isMakeDone, isAuthorizeDone].filter(Boolean).length}/3 Checkpoints Complete
                           </span>
                         </div>
-
+                        {!canAuthorize && !isAuthorizeDone && canChangeStatus && (
+                          <span className="text-[10px] text-violet-500 dark:text-violet-400 leading-snug">
+                            {!isConfigureDone || !isMakeDone
+                              ? 'Complete Configure → Make first'
+                              : 'Only the assigned Authorizer can authorize'}
+                          </span>
+                        )}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                           {/* Checkbox 1: C (Configure) */}
                           <label
@@ -472,7 +490,7 @@ export const RequestDetailModal: React.FC = () => {
                               type="checkbox"
                               id="cma-checkbox-make"
                               checked={isMakeDone}
-                              disabled={!canChangeStatus || isAuthorized}
+                              disabled={!canChangeStatus || isAuthorized || !canMake}
                               onChange={(e) => updateWithdrawalCmaStep(req.id, 'make', e.target.checked)}
                               className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                             />
@@ -512,7 +530,7 @@ export const RequestDetailModal: React.FC = () => {
                                 type="checkbox"
                                 id="cma-checkbox-authorize"
                                 checked={isAuthorizeDone}
-                                disabled={!canChangeStatus || isAuthorized}
+                                disabled={!canChangeStatus || isAuthorized || !canAuthorize}
                                 onChange={(e) =>
                                   updateWithdrawalCmaStep(
                                     req.id,
@@ -523,6 +541,7 @@ export const RequestDetailModal: React.FC = () => {
                                 }
                                 className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 dark:border-slate-600 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                               />
+
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between gap-1">
                                   <div className="flex items-center gap-1.5">
@@ -641,9 +660,9 @@ export const RequestDetailModal: React.FC = () => {
                           <div key={st} className="flex flex-col items-center relative z-10">
                             <div
                               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${isCurrent
-                                ? 'bg-indigo-600 text-white border-indigo-600 ring-4 ring-indigo-100 dark:ring-indigo-950/60'
+                                ? 'bg-blue-600 text-white border-blue-600 ring-4 ring-blue-100 dark:ring-blue-950/80 shadow-md shadow-blue-500/20'
                                 : isPast
-                                  ? 'bg-emerald-500 text-white border-emerald-500'
+                                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs shadow-emerald-500/30'
                                   : 'bg-white dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-600'
                                 }`}
                             >
@@ -660,9 +679,16 @@ export const RequestDetailModal: React.FC = () => {
                     </div>
                   )
                 ) : (
-                  <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-center gap-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
-                    <XCircle className="w-4 h-4 shrink-0" />
-                    <span>This request was rejected by compliance or support operations.</span>
+                  <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex flex-col gap-1 text-xs">
+                    <div className="flex items-center gap-2 font-semibold text-rose-700 dark:text-rose-300">
+                      <XCircle className="w-4 h-4 shrink-0" />
+                      <span>This request was rejected.</span>
+                    </div>
+                    {req.rejectionReason && (
+                      <div className="pl-6 text-rose-600 dark:text-rose-400 italic">
+                        Reason: {req.rejectionReason}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -671,28 +697,28 @@ export const RequestDetailModal: React.FC = () => {
                   isWithdraw ? (
                     isAuthorized ? (
                       /* Withdrawal Authorized and Completed -> Locked state */
-                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs">
-                        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-semibold">
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-2.5 p-3 rounded-xl bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-500/30 dark:border-emerald-800 text-xs">
+                        <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold">
                           <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                           <span>Withdrawal Authorized & Completed. Status transitions are locked.</span>
                         </div>
-                        <div className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200">
+                        <div className="font-mono text-xs font-bold px-2.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
                           Authorized: {withdrawReq?.currency} {authorizedAmountValue.toLocaleString()}
                         </div>
                       </div>
                     ) : (
                       /* Withdrawal: Only Reset to Pending and Reject are allowed */
                       <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                           Update State:
                         </span>
                         {req.status !== 'rejected' && (
                           <button
                             id="set-rejected-btn"
-                            onClick={() => handleStatusChange('rejected')}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-md bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 transition-colors flex items-center gap-1"
+                            onClick={() => setShowRejectDialog(true)}
+                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 active:scale-95 transition-all flex items-center gap-1.5 border border-rose-500"
                           >
-                            <XCircle className="w-3 h-3" />
+                            <XCircle className="w-3.5 h-3.5" />
                             Reject
                           </button>
                         )}
@@ -700,9 +726,9 @@ export const RequestDetailModal: React.FC = () => {
                           <button
                             id="set-pending-btn"
                             onClick={() => handleStatusChange('pending')}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1"
+                            className="px-3 py-1.5 text-xs font-bold rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 border border-amber-500/30 dark:border-amber-500/40 active:scale-95 transition-all flex items-center gap-1.5"
                           >
-                            <RotateCcw className="w-3 h-3" />
+                            <RotateCcw className="w-3.5 h-3.5" />
                             Reset to Pending
                           </button>
                         )}
@@ -711,15 +737,19 @@ export const RequestDetailModal: React.FC = () => {
                   ) : (
                     /* Standard Request Status Controls for Support Tickets & Deposits */
                     <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                         Update State:
                       </span>
                       {req.status !== 'in_progress' && (
                         <button
-                          id="set-pending-btn"
+                          id="set-in-progress-btn"
                           onClick={() => handleStatusChange('in_progress')}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1"
+                          className="px-3 py-1.5 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20 active:scale-95 transition-all flex items-center gap-1.5 border border-blue-500"
                         >
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                          </span>
                           Verification In Progress
                         </button>
                       )}
@@ -727,19 +757,19 @@ export const RequestDetailModal: React.FC = () => {
                         <button
                           id="set-completed-btn"
                           onClick={() => handleStatusChange('completed')}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 transition-colors flex items-center gap-1"
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/25 active:scale-95 transition-all flex items-center gap-1.5 border border-emerald-500"
                         >
-                          <CheckCircle2 className="w-3 h-3" />
+                          <CheckCircle2 className="w-3.5 h-3.5" />
                           Approve
                         </button>
                       )}
                       {req.status !== 'rejected' && (
                         <button
                           id="set-rejected-btn"
-                          onClick={() => handleStatusChange('rejected')}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800 transition-colors flex items-center gap-1"
+                          onClick={() => setShowRejectDialog(true)}
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/25 active:scale-95 transition-all flex items-center gap-1.5 border border-rose-500"
                         >
-                          <XCircle className="w-3 h-3" />
+                          <XCircle className="w-3.5 h-3.5" />
                           Reject
                         </button>
                       )}
@@ -747,9 +777,9 @@ export const RequestDetailModal: React.FC = () => {
                         <button
                           id="set-pending-btn"
                           onClick={() => handleStatusChange('pending')}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-1"
+                          className="px-3 py-1.5 text-xs font-bold rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-800 dark:text-amber-200 border border-amber-500/30 dark:border-amber-500/40 active:scale-95 transition-all flex items-center gap-1.5"
                         >
-                          <RotateCcw className="w-3 h-3" />
+                          <RotateCcw className="w-3.5 h-3.5" />
                           Reset to Pending
                         </button>
                       )}
@@ -1301,8 +1331,9 @@ export const RequestDetailModal: React.FC = () => {
                       setDeleteReasonInput('');
                     }
                   }}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white shadow-md shadow-rose-600/20 transition-all"
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-50 text-white shadow-md shadow-rose-600/30 transition-all flex items-center gap-1.5"
                 >
+                  <Trash2 className="w-3.5 h-3.5" />
                   Submit Deletion Request
                 </button>
               </div>
@@ -1310,6 +1341,67 @@ export const RequestDetailModal: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* ── Rejection Reason Dialog ── */}
+      {showRejectDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            onClick={() => { setShowRejectDialog(false); setRejectionReasonInput(''); }}
+          />
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-rose-200 dark:border-rose-800 p-6 z-10 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-950/60 flex items-center justify-center shrink-0">
+                <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Reject Request</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Ticket: <span className="font-mono font-semibold">{req.ticketNumber}</span>
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Rejection Message <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows={4}
+                autoFocus
+                placeholder="Explain the reason for rejecting this request (visible to the client)..."
+                value={rejectionReasonInput}
+                onChange={e => setRejectionReasonInput(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => { setShowRejectDialog(false); setRejectionReasonInput(''); }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!rejectionReasonInput.trim()}
+                onClick={async () => {
+                  await rejectRequest(req.id, rejectionReasonInput);
+                  setShowRejectDialog(false);
+                  setRejectionReasonInput('');
+                  setActiveRequest(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 active:scale-95 disabled:opacity-50 text-white shadow-md shadow-rose-600/30 transition-all flex items-center gap-1.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Confirm Rejection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AnimatePresence>
   );
 };
