@@ -70,6 +70,9 @@ web_modules/
 .env.*
 !.env.example
 
+# Supabase CA certificate (developer-local, contains private CA — do not commit)
+supabase/supabase-ca.crt
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
