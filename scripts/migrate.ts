@@ -14,12 +14,58 @@ const connectionString =
 const isLocal =
   connectionString.includes('127.0.0.1') || connectionString.includes('localhost');
 
+// ---------------------------------------------------------------------------
+// SSL configuration
+// ---------------------------------------------------------------------------
+// Supabase (both direct and pooler endpoints) uses a private CA whose root is
+// not included in Node.js's default trust store. The only way to get full cert
+// validation is to pin Supabase's own CA certificate.
+//
+// To enable full validation (recommended):
+//   1. Supabase Dashboard → Project Settings → Database → SSL Certificate → Download.
+//   2. Save the file as: supabase/supabase-ca.crt
+//   3. Re-run: npm run db:migrate
+//
+// The CA cert file is listed in .gitignore — do NOT commit it.
+// ---------------------------------------------------------------------------
+const CA_CERT_PATH =
+  process.env.SUPABASE_CA_CERT_PATH ??
+  path.resolve(process.cwd(), 'supabase', 'supabase-ca.crt');
+
+function getSslConfig(): false | object {
+  if (isLocal) return false; // local Supabase CLI — no TLS needed
+
+  if (fs.existsSync(CA_CERT_PATH)) {
+    // Full mutual TLS with pinned Supabase CA cert (SEC-09 ✅)
+    return {
+      rejectUnauthorized: true,
+      ca: fs.readFileSync(CA_CERT_PATH).toString(),
+    };
+  }
+
+  // No CA cert on disk — fall back to encrypted-but-unpinned.
+  // Traffic is still TLS-encrypted; only MITM cert swapping is not caught.
+  console.warn('\n⚠️  SSL Warning: CA cert not found. Running without certificate validation.');
+  console.warn(`   To enable full validation, download your Supabase CA cert and save it to:`);
+  console.warn(`     ${CA_CERT_PATH}`);
+  console.warn('   Get it from: Supabase Dashboard → Project Settings → Database → SSL Certificate\n');
+  return { rejectUnauthorized: false };
+}
+
 async function runMigration() {
-  console.log(' Connecting to PostgreSQL at:', isLocal ? connectionString : connectionString.replace(/:[^:@]+@/, ':****@'));
+  const masked = connectionString.replace(/:[^:@]+@/, ':****@');
+  console.log(' Connecting to PostgreSQL at:', isLocal ? connectionString : masked);
+
+  const sslConfig = getSslConfig();
+  if (sslConfig && typeof sslConfig === 'object' && 'ca' in sslConfig) {
+    console.log(' SSL mode: full cert validation ✅ (CA cert pinned)');
+  } else if (sslConfig) {
+    console.log(' SSL mode: encrypted, cert chain not validated (add supabase-ca.crt to enable)');
+  }
 
   const client = new Client({
     connectionString,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    ssl: sslConfig as any,
   });
 
   try {
@@ -60,19 +106,16 @@ async function runMigration() {
     }
 
     console.log('\n🛠️ How to resolve:');
-    console.log('  Option 1 (Fastest & 100% Reliable - Recommended):');
-    console.log('    1. Open your Supabase Dashboard (https://supabase.com/dashboard)');
-    console.log('    2. Go to "SQL Editor" tab.');
-    console.log('    3. Paste the contents of "supabase/schema.sql" and click "Run".\n');
-    console.log('  Option 2 (Use Supabase Connection Pooler with IPv4):');
-    console.log('    1. In Supabase Dashboard, go to Project Settings > Database.');
-    console.log('    2. Under "Connection string", select "Connection pooler" (Session mode).');
-    console.log('    3. Copy the URI string (e.g. postgresql://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:6543/postgres or port 5432).');
-    console.log('    4. Update DATABASE_URL in your .env.local file.');
-    console.log('    5. Re-run "npm run db:migrate".\n');
+    console.log('  Option 1 — Pin Supabase CA cert (enables full TLS validation):');
+    console.log('    1. Supabase Dashboard → Project Settings → Database → SSL Certificate → Download.');
+    console.log(`    2. Save the file as: ${CA_CERT_PATH}`);
+    console.log('    3. Re-run: npm run db:migrate\n');
+    console.log('  Option 2 — Supabase SQL Editor (no local connection needed):');
+    console.log('    1. Open https://supabase.com/dashboard → SQL Editor.');
+    console.log('    2. Paste supabase/schema.sql and click Run.\n');
     process.exit(1);
   } finally {
-    await client.end().catch(() => {});
+    await client.end().catch(() => { });
   }
 }
 

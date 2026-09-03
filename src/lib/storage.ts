@@ -183,8 +183,23 @@ export function logAuditEvent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CSV Export
+// CSV Export (Sanitized against Formula/CSV Injection - CWE-1236)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Neutralizes Formula / CSV Injection (CWE-1236).
+ * If a cell string starts with =, +, -, @, tab, or carriage return,
+ * Excel/Calc may execute it as a formula or command. Prepending a single
+ * quote (') forces spreadsheet parsers to treat the value strictly as text.
+ */
+function sanitizeForCsv(value: unknown): string {
+  if (value === null || value === undefined) return '""';
+  let str = String(value).replace(/"/g, '""');
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str}"`;
+}
 
 export function exportRequestsToCSV(requests: ServiceRequest[], filename = 'client_service_requests.csv'): void {
   const headers = [
@@ -222,20 +237,20 @@ export function exportRequestsToCSV(requests: ServiceRequest[], filename = 'clie
     }
 
     return [
-      `"${req.ticketNumber}"`,
-      `"${req.type.toUpperCase()}"`,
-      `"${req.title.replace(/"/g, '""')}"`,
-      `"${req.status.toUpperCase()}"`,
-      `"${req.priority.toUpperCase()}"`,
-      `"${req.clientName}"`,
-      `"${req.clientEmail}"`,
-      `"${req.clientCompany || ''}"`,
-      `"${req.assignedOperatorName || 'Unassigned'}"`,
-      `"${amount}"`,
-      `"${currency}"`,
-      `"${methodOrCat}"`,
-      `"${formatDateTimeIST(req.createdAt)}"`,
-      `"${formatDateTimeIST(req.updatedAt)}"`,
+      sanitizeForCsv(req.ticketNumber),
+      sanitizeForCsv(req.type.toUpperCase()),
+      sanitizeForCsv(req.title),
+      sanitizeForCsv(req.status.toUpperCase()),
+      sanitizeForCsv(req.priority.toUpperCase()),
+      sanitizeForCsv(req.clientName),
+      sanitizeForCsv(req.clientEmail),
+      sanitizeForCsv(req.clientCompany || ''),
+      sanitizeForCsv(req.assignedOperatorName || 'Unassigned'),
+      sanitizeForCsv(amount),
+      sanitizeForCsv(currency),
+      sanitizeForCsv(methodOrCat),
+      sanitizeForCsv(formatDateTimeIST(req.createdAt)),
+      sanitizeForCsv(formatDateTimeIST(req.updatedAt)),
     ].join(',');
   });
 

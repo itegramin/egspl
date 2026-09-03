@@ -51,6 +51,8 @@ export const EditProfileModal: React.FC = () => {
   const [isCustomAvatar, setIsCustomAvatar] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  const isStaff = user.role === 'admin' || user.role === 'operator';
+
   useEffect(() => {
     if (user && isProfileModalOpen) {
       setName(user.name || '');
@@ -118,7 +120,7 @@ export const EditProfileModal: React.FC = () => {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2 }}
-          className="relative z-10 w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden my-8"
+          className="relative z-10 mt-80 w-full max-w-xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden my-8"
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-slate-900 via-emerald-950/80 to-slate-900 text-white p-6 relative border-b border-emerald-900/40">
@@ -278,96 +280,98 @@ export const EditProfileModal: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100 dark:border-slate-800/80">
-                <div className="sm:col-span-2">
-                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 mb-1">
-                    <Building className="w-3.5 h-3.5 text-indigo-500" />
-                    <span>Banking & Settlement Details</span>
+              {!isStaff && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                  <div className="sm:col-span-2">
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5 mb-1">
+                      <Building className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>Banking & Settlement Details</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Your banking information used for holding deposits, withdrawals, and account verification.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    Your banking information used for holding deposits, withdrawals, and account verification.
-                  </p>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Bank Name
-                  </label>
-                  <div className="relative">
-                    <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={bankName}
-                      onChange={(e) => setBankName(e.target.value)}
-                      placeholder="e.g. State Bank of India"
-                      className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    IFSC Code
-                  </label>
-                  <div className="relative">
-                    <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={bankCode}
-                      onChange={(e) => setBankCode(e.target.value.toUpperCase())}
-                      placeholder="e.g. SBIN0001234"
-                      className="w-full pl-9 pr-4 py-2 text-xs font-mono uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      Account Number
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Bank Name
                     </label>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                      <Lock className="w-2.5 h-2.5" />
-                      Masked & Secure
-                    </span>
+                    <div className="relative">
+                      <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        placeholder="e.g. State Bank of India"
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showAccountNo ? 'text' : 'password'}
-                      value={accountNo}
-                      onChange={(e) => setAccountNo(e.target.value)}
-                      placeholder="e.g. 123456789012"
-                      className="w-full pl-9 pr-10 py-2 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowAccountNo(!showAccountNo)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded transition-colors"
-                      title={showAccountNo ? 'Mask account number' : 'Show account number'}
-                    >
-                      {showAccountNo ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Kiosk ID
-                  </label>
-                  <div className="relative">
-                    <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={kioskId}
-                      onChange={(e) => setKioskId(e.target.value)}
-                      placeholder="e.g. KIOSK-091"
-                      className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      IFSC Code
+                    </label>
+                    <div className="relative">
+                      <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={bankCode}
+                        onChange={(e) => setBankCode(e.target.value.toUpperCase())}
+                        placeholder="e.g. SBIN0001234"
+                        className="w-full pl-9 pr-4 py-2 text-xs font-mono uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Account Number
+                      </label>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                        <Lock className="w-2.5 h-2.5" />
+                        Masked & Secure
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showAccountNo ? 'text' : 'password'}
+                        value={accountNo}
+                        onChange={(e) => setAccountNo(e.target.value)}
+                        placeholder="e.g. 123456789012"
+                        className="w-full pl-9 pr-10 py-2 text-xs font-mono rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAccountNo(!showAccountNo)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded transition-colors"
+                        title={showAccountNo ? 'Mask account number' : 'Show account number'}
+                      >
+                        {showAccountNo ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Kiosk ID
+                    </label>
+                    <div className="relative">
+                      <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        value={kioskId}
+                        onChange={(e) => setKioskId(e.target.value)}
+                        placeholder="e.g. KIOSK-091"
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
             </div>
 
             {/* Actions */}
