@@ -23,7 +23,13 @@ import {
   Info,
   Layers,
   Calendar,
-  Filter
+  Filter,
+  Megaphone,
+  Radio,
+  ToggleLeft,
+  ToggleRight,
+  ChevronDown,
+  Clock,
 } from 'lucide-react';
 
 export const NotificationLogsView: React.FC = () => {
@@ -36,6 +42,10 @@ export const NotificationLogsView: React.FC = () => {
     clearNotification,
     setActiveRequest,
     requests,
+    globalNotices,
+    broadcastGlobalNotice,
+    deactivateGlobalNotice,
+    deleteGlobalNotice,
   } = useApp();
   const { user } = useAuth();
 
@@ -47,8 +57,35 @@ export const NotificationLogsView: React.FC = () => {
   const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
+  // Broadcast form state (admin only)
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastType, setBroadcastType] = useState<'info' | 'success' | 'warning' | 'error'>('info');
+  const [broadcastExpiry, setBroadcastExpiry] = useState('');
+  const [isBroadcastOpen, setIsBroadcastOpen] = useState(false);
+  const [isSubmittingBroadcast, setIsSubmittingBroadcast] = useState(false);
+
   // Admin users can see all system notifications, other users see their relevant notifications
   const sourceNotifications = user?.role === 'admin' ? notifications : userNotifications;
+
+  // Handle broadcast submit
+  const handleBroadcastSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) return;
+    setIsSubmittingBroadcast(true);
+    broadcastGlobalNotice({
+      title: broadcastTitle.trim(),
+      message: broadcastMessage.trim(),
+      type: broadcastType,
+      expiresAt: broadcastExpiry ? new Date(broadcastExpiry).toISOString() : undefined,
+    });
+    setBroadcastTitle('');
+    setBroadcastMessage('');
+    setBroadcastType('info');
+    setBroadcastExpiry('');
+    setIsSubmittingBroadcast(false);
+    setIsBroadcastOpen(false);
+  };
 
   // Filtered Notifications computation
   const filteredNotifications = useMemo(() => {
@@ -156,6 +193,12 @@ export const NotificationLogsView: React.FC = () => {
             <Layers className="w-3 h-3" /> Status Update
           </span>
         );
+      case 'assignment':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+            <Headphones className="w-3 h-3" /> Assignment
+          </span>
+        );
       case 'deposit':
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -166,6 +209,12 @@ export const NotificationLogsView: React.FC = () => {
         return (
           <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
             <WalletCards className="w-3 h-3" /> Withdrawal
+          </span>
+        );
+      case 'global_notice':
+        return (
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+            <Megaphone className="w-3 h-3" /> Global Notice
           </span>
         );
       default:
@@ -246,6 +295,187 @@ export const NotificationLogsView: React.FC = () => {
         </div>
       </div>
 
+      {/* ── Admin: Broadcast Global Notice Panel ────────────────────────────── */}
+      {user?.role === 'admin' && (
+        <div className="rounded-2xl border border-rose-200 dark:border-rose-800/60 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+          {/* Panel header — always visible */}
+          <button
+            type="button"
+            onClick={() => setIsBroadcastOpen(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+                <Megaphone className="w-4 h-4" />
+              </span>
+              <div>
+                <div className="text-sm font-bold text-slate-900 dark:text-white">Broadcast Global Notice</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Send a platform-wide announcement visible to all users on their dashboard.
+                </div>
+              </div>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isBroadcastOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Collapsible form */}
+          {isBroadcastOpen && (
+            <form onSubmit={handleBroadcastSubmit} className="px-5 pb-5 border-t border-slate-100 dark:border-slate-800 pt-4 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Title */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Notice Title <span className="text-rose-500">*</span></label>
+                  <input
+                    type="text"
+                    required
+                    value={broadcastTitle}
+                    onChange={e => setBroadcastTitle(e.target.value)}
+                    placeholder="e.g. Scheduled Maintenance Tonight"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+                {/* Message */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Message Body <span className="text-rose-500">*</span></label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={broadcastMessage}
+                    onChange={e => setBroadcastMessage(e.target.value)}
+                    placeholder="Enter the full notice message for all platform users..."
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+                  />
+                </div>
+                {/* Type */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Notice Severity</label>
+                  <select
+                    value={broadcastType}
+                    onChange={e => setBroadcastType(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500 font-medium cursor-pointer"
+                  >
+                    <option value="info">ℹ️ Informational</option>
+                    <option value="success">✅ Positive / Success</option>
+                    <option value="warning">⚠️ Caution / Warning</option>
+                    <option value="error">🚨 Critical / Alert</option>
+                  </select>
+                </div>
+                {/* Expiry */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Auto-Expire (optional)</label>
+                  <input
+                    type="datetime-local"
+                    value={broadcastExpiry}
+                    onChange={e => setBroadcastExpiry(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">Leave blank to keep active until manually deactivated.</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsBroadcastOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingBroadcast || !broadcastTitle.trim() || !broadcastMessage.trim()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50 shadow-sm transition-colors"
+                >
+                  <Radio className="w-3.5 h-3.5" />
+                  Broadcast to All Users
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Active notices sub-table */}
+          {globalNotices.length > 0 && (
+            <div className="border-t border-slate-100 dark:border-slate-800 px-5 py-4">
+              <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Radio className="w-3.5 h-3.5" />
+                Active Broadcast History ({globalNotices.length})
+              </div>
+              <div className="space-y-2">
+                {globalNotices.map(notice => {
+                  const isExpired = notice.expiresAt && new Date(notice.expiresAt) < new Date();
+                  const effectivelyActive = notice.isActive && !isExpired;
+                  return (
+                    <div
+                      key={notice.id}
+                      className={`flex items-start justify-between gap-3 p-3 rounded-xl border text-xs ${
+                        effectivelyActive
+                          ? 'border-rose-200 dark:border-rose-800/50 bg-rose-50/50 dark:bg-rose-950/20'
+                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 opacity-60'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          {effectivelyActive && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-200 uppercase">
+                              <Radio className="w-2.5 h-2.5" /> Live
+                            </span>
+                          )}
+                          {isExpired && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 uppercase">
+                              <Clock className="w-2.5 h-2.5" /> Expired
+                            </span>
+                          )}
+                          {!notice.isActive && !isExpired && (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 uppercase">
+                              Deactivated
+                            </span>
+                          )}
+                          <span className="font-bold text-slate-900 dark:text-white truncate">{notice.title}</span>
+                        </div>
+                        <div className="text-slate-500 dark:text-slate-400 truncate">{notice.message}</div>
+                        <div className="text-[11px] text-slate-400 mt-1">
+                          By {notice.createdByName} · {formatDateTimeIST(notice.createdAt)}
+                          {notice.expiresAt && ` · Expires ${formatDateTimeIST(notice.expiresAt)}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {notice.isActive && !isExpired && (
+                          <button
+                            onClick={() => deactivateGlobalNotice(notice.id)}
+                            title="Deactivate"
+                            className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-colors"
+                          >
+                            <ToggleRight className="w-4 h-4" />
+                          </button>
+                        )}
+                        {!notice.isActive && (
+                          <button
+                            onClick={() => { /* reactivate by toggling isActive back */
+                              /* handled by deactivate being a toggle concept — add re-activate if needed */
+                            }}
+                            title="Already deactivated"
+                            className="p-1.5 rounded-lg text-slate-300 dark:text-slate-600 cursor-default"
+                          >
+                            <ToggleLeft className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => deleteGlobalNotice(notice.id)}
+                          title="Delete"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filter Control Bar */}
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
@@ -271,9 +501,11 @@ export const NotificationLogsView: React.FC = () => {
               <option value="all">⚡ All Categories</option>
               <option value="new_request">📝 New Request Submissions</option>
               <option value="request_update">🔄 Status & Queue Updates</option>
+              <option value="assignment">🎧 Assignment Notifications</option>
               <option value="deposit">💰 Holding Deposits</option>
               <option value="withdraw">💳 Holding Withdrawals</option>
               <option value="system">⚙️ System & Security</option>
+              <option value="global_notice">📢 Global Broadcast Notices</option>
             </select>
           </div>
 

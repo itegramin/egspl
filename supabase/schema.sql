@@ -99,6 +99,11 @@ ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS delete_requested_by_id TEXT;
 ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS delete_requested_reason TEXT;
 ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS delete_requested_at TIMESTAMPTZ;
 
+-- Authorizer assignment and structured rejection reason columns
+ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS assigned_authorizer_id TEXT REFERENCES csmp_users(id) ON DELETE SET NULL;
+ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS assigned_authorizer_name TEXT;
+ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS rejection_reason TEXT;
+
 -- 3. RBAC ROLE PERMISSIONS TABLE
 CREATE TABLE IF NOT EXISTS csmp_role_permissions (
   role TEXT PRIMARY KEY CHECK (role IN ('client', 'operator', 'admin')),
@@ -477,8 +482,8 @@ CREATE TRIGGER on_auth_user_created
 -- -------------------------------------------------------------
 INSERT INTO csmp_role_permissions (role, allowed_pages, can_create_request, can_change_status, can_assign_operator, can_add_internal_notes, can_view_all_clients, can_manage_roles, can_export_reports, can_view_audit_logs)
 VALUES
-  ('admin', '["dashboard", "support", "holding", "all-requests", "clients", "analytics", "rbac", "audit-logs", "settings"]'::jsonb, false, true, true, true, true, true, true, true),
-  ('operator', '["dashboard", "support", "holding", "all-requests", "clients", "analytics"]'::jsonb, false, true, true, true, true, false, true, false),
+  ('admin', '["dashboard", "support", "holding", "all-requests", "assignments", "clients", "analytics", "rbac", "audit-logs", "settings"]'::jsonb, false, true, true, true, true, true, true, true),
+  ('operator', '["dashboard", "support", "holding", "all-requests", "assignments", "clients", "analytics"]'::jsonb, false, true, true, true, true, false, true, false),
   ('client', '["dashboard", "support", "holding"]'::jsonb, true, false, false, false, false, false, false, false)
 ON CONFLICT (role) DO UPDATE SET
   allowed_pages = EXCLUDED.allowed_pages,

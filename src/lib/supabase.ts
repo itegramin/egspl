@@ -197,6 +197,9 @@ export function mapDbRequest(row: DbRequest | any): ServiceRequest {
     branchCode: row.branch_code || undefined,
     assignedOperatorId: row.assigned_operator_id || undefined,
     assignedOperatorName: row.assigned_operator_name || undefined,
+    assignedAuthorizerId: (row as any).assigned_authorizer_id || undefined,
+    assignedAuthorizerName: (row as any).assigned_authorizer_name || undefined,
+    rejectionReason: (row as any).rejection_reason || undefined,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
     resolvedAt: row.resolved_at || undefined,
@@ -287,6 +290,9 @@ export function mapRequestToDb(req: ServiceRequest): DbRequestInsert {
     kiosk_id: (req as any).kioskId || null,
     assigned_operator_id: req.assignedOperatorId || null,
     assigned_operator_name: req.assignedOperatorName || null,
+    assigned_authorizer_id: (req as any).assignedAuthorizerId || null,
+    assigned_authorizer_name: (req as any).assignedAuthorizerName || null,
+    rejection_reason: req.rejectionReason || null,
     attachments: (req.attachments || []) as any,
     comments: ((req.comments || []).map((c: any) => {
       const ts = c.createdAt || c.created_at || new Date().toISOString();
@@ -523,7 +529,7 @@ export async function deleteRequestFromSupabase(reqId: string): Promise<void> {
 export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: {
     role: 'admin',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
+    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -535,7 +541,7 @@ export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   operator: {
     role: 'operator',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'clients', 'analytics', 'notifications'],
+    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'notifications'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,

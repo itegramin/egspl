@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { StatusBadge, PriorityBadge, TypeBadge } from '../common/Badge';
@@ -21,13 +21,21 @@ import {
   TrendingUp,
   ArrowRight,
   FileText,
-  Trash2
+  Trash2,
+  Megaphone,
+  X,
+  Info,
+  CheckCircle,
+  AlertOctagon,
 } from 'lucide-react';
 import { HoldingDepositRequest, HoldingWithdrawRequest } from '../../types';
 
 export const DashboardOverview: React.FC = () => {
-  const { requests, filteredRequests, setActiveRequest, openCreateModal, triggerExportCSV, setCurrentPage, setFilters, permissions } = useApp();
+  const { requests, filteredRequests, setActiveRequest, openCreateModal, triggerExportCSV, setCurrentPage, setFilters, permissions, activeGlobalNotice } = useApp();
   const { user } = useAuth();
+
+  // Session-level dismiss state for the global notice banner
+  const [dismissedNoticeId, setDismissedNoticeId] = useState<string | null>(null);
 
   // Role-filtered requests for metrics
   const userVisibleReqs = requests.filter(r => user.role !== 'client' || r.clientId === user.id);
@@ -98,6 +106,52 @@ export const DashboardOverview: React.FC = () => {
           )}
         </div>
       </motion.div>
+
+      {/* ── Global Notice Banner (all roles, session-dismissable) ── */}
+      {activeGlobalNotice && activeGlobalNotice.id !== dismissedNoticeId && (() => {
+        const palette = {
+          info:    { bg: 'bg-blue-50 dark:bg-blue-950/40',    border: 'border-blue-200 dark:border-blue-800/80',    text: 'text-blue-900 dark:text-blue-100',    sub: 'text-blue-700 dark:text-blue-300/80',    icon: <Info className="w-5 h-5" />,          iconBg: 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400',  btn: 'bg-blue-600 hover:bg-blue-700' },
+          success: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800/80', text: 'text-emerald-900 dark:text-emerald-100', sub: 'text-emerald-700 dark:text-emerald-300/80', icon: <CheckCircle className="w-5 h-5" />,  iconBg: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400', btn: 'bg-emerald-600 hover:bg-emerald-700' },
+          warning: { bg: 'bg-amber-50 dark:bg-amber-950/40',   border: 'border-amber-200 dark:border-amber-800/80',   text: 'text-amber-900 dark:text-amber-100',   sub: 'text-amber-700 dark:text-amber-300/80',   icon: <AlertTriangle className="w-5 h-5" />, iconBg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400',   btn: 'bg-amber-600 hover:bg-amber-700' },
+          error:   { bg: 'bg-red-50 dark:bg-red-950/40',      border: 'border-red-200 dark:border-red-800/80',      text: 'text-red-900 dark:text-red-100',      sub: 'text-red-700 dark:text-red-300/80',      icon: <AlertOctagon className="w-5 h-5" />,  iconBg: 'bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400',       btn: 'bg-red-600 hover:bg-red-700' },
+        };
+        const p = palette[activeGlobalNotice.type] || palette.info;
+        return (
+          <div className={`p-4 rounded-xl border flex items-start gap-3 ${p.bg} ${p.border}`}>
+            <div className={`p-2 rounded-lg shrink-0 ${p.iconBg}`}>{p.icon}</div>
+            <div className="flex-1 min-w-0">
+              <div className={`flex items-center gap-2 mb-0.5`}>
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/50 dark:bg-white/10 text-current">
+                  <Megaphone className="w-2.5 h-2.5" /> Platform Notice
+                </span>
+              </div>
+              <div className={`text-xs sm:text-sm font-bold ${p.text}`}>{activeGlobalNotice.title}</div>
+              <p className={`text-xs mt-0.5 ${p.sub}`}>{activeGlobalNotice.message}</p>
+              <div className="flex items-center gap-3 mt-2">
+                <span className={`text-[11px] ${p.sub} opacity-70`}>
+                  Issued by {activeGlobalNotice.createdByName}
+                  {activeGlobalNotice.expiresAt && ` · Expires ${new Date(activeGlobalNotice.expiresAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}`}
+                </span>
+                {user.role === 'admin' && (
+                  <button
+                    onClick={() => setCurrentPage('notifications')}
+                    className={`text-[11px] font-semibold underline underline-offset-2 ${p.sub}`}
+                  >
+                    Manage Notices →
+                  </button>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setDismissedNoticeId(activeGlobalNotice.id)}
+              className={`p-1.5 rounded-lg shrink-0 opacity-60 hover:opacity-100 transition-opacity ${p.text}`}
+              title="Dismiss for this session"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Urgent Alert Banner (if any) */}
       {isStaff && (

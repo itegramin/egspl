@@ -31,6 +31,7 @@ import { RolePermissionMatrix } from './components/rbac/RolePermissionMatrix';
 import { AuditLogsView } from './components/audit/AuditLogsView';
 import { NotificationLogsView } from './components/notifications/NotificationLogsView';
 import { SettingsView } from './components/settings/SettingsView';
+import { AssignmentManagementView } from './components/assignments/AssignmentManagementView';
 
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
@@ -76,6 +77,8 @@ const MainLayout: React.FC = () => {
         return <HoldingRequestsView />;
       case 'all-requests':
         return <RequestList />;
+      case 'assignments':
+        return <AssignmentManagementView />;
       case 'clients':
         return <ClientDirectory />;
       case 'analytics':
@@ -198,6 +201,7 @@ export default function App() {
           <Route path="/support" element={<AppContent />} />
           <Route path="/holding" element={<AppContent />} />
           <Route path="/all-requests" element={<AppContent />} />
+          <Route path="/assignments" element={<AppContent />} />
           <Route path="/clients" element={<AppContent />} />
           <Route path="/analytics" element={<AppContent />} />
           <Route path="/rbac" element={<AppContent />} />

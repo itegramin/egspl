@@ -7,6 +7,7 @@ import {
   Headphones,
   WalletCards,
   Inbox,
+  UserCheck,
   Users,
   BarChart3,
   ShieldCheck,
@@ -68,6 +69,13 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
       reqs.filter(r => u.role !== 'client' || r.clientId === u.id).length,
   },
   {
+    id: 'assignments',
+    label: 'Assignments',
+    icon: UserCheck,
+    badgeCount: (reqs, u) =>
+      u.role === 'client' ? 0 : reqs.filter(r => !r.assignedOperatorId && r.status === 'pending').length,
+  },
+  {
     id: 'clients',
     label: 'User Directory',
     icon: Users,
@@ -109,6 +117,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'support',
     'holding',
     'all-requests',
+    'assignments',
     'clients',
     'analytics',
     'rbac',
@@ -121,7 +130,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'support',
     'holding',
     'all-requests',
-    'clients',
+    'assignments',
     'analytics',
     'notifications',
   ],
@@ -129,6 +138,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'dashboard',
     'support',
     'holding',
+    'notifications'
   ],
 };
 
@@ -200,8 +210,7 @@ export const Sidebar: React.FC = () => {
                 end={item.id === 'dashboard'}
                 onClick={closeMobileSidebar}
                 className={({ isActive }) =>
-                  `relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group overflow-hidden ${
-                    isActive ? 'text-white' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  `relative w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors group overflow-hidden ${isActive ? 'text-white' : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                   }`
                 }
               >
@@ -218,9 +227,8 @@ export const Sidebar: React.FC = () => {
 
                     <div className="relative z-10 flex items-center gap-3 truncate">
                       <Icon
-                        className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
-                          isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                        }`}
+                        className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
+                          }`}
                       />
                       <span className="truncate">{item.label}</span>
                     </div>
@@ -228,11 +236,10 @@ export const Sidebar: React.FC = () => {
                     <div className="relative z-10 flex items-center gap-1.5 shrink-0 ml-2">
                       {count > 0 && (
                         <span
-                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-                            isActive
-                              ? 'bg-white text-emerald-700'
-                              : 'bg-slate-800 text-emerald-300 border border-slate-700'
-                          }`}
+                          className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${isActive
+                            ? 'bg-white text-emerald-700'
+                            : 'bg-slate-800 text-emerald-300 border border-slate-700'
+                            }`}
                         >
                           {count}
                         </span>

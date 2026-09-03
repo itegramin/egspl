@@ -44,6 +44,7 @@ export type PageId =
   | 'support'
   | 'holding'
   | 'all-requests'
+  | 'assignments'
   | 'clients'
   | 'analytics'
   | 'rbac'
@@ -63,6 +64,7 @@ export const APP_PAGE_DEFINITIONS: PageMetadata[] = [
   { id: 'support', name: 'Support Requests', desc: 'Category-filtered tickets, bug reports, and screenshot reviews', category: 'operations' },
   { id: 'holding', name: 'Limit Requests', desc: 'Deposit confirmation slips and withdrawal payout requests', category: 'operations' },
   { id: 'all-requests', name: 'All Service Requests', desc: 'Master directory table with multi-parameter filtering and search', category: 'operations' },
+  { id: 'assignments', name: 'Assignment Management', desc: 'Workload distribution, operator assignment, and authorizer sign-off', category: 'operations' },
   { id: 'clients', name: 'User Directory (CRM)', desc: 'Client account list, holding balances, and portfolio histories', category: 'operations' },
   { id: 'analytics', name: 'Analytics & SLA Reporting', desc: 'Visual charts, operator workload, and volume trends', category: 'operations' },
   { id: 'rbac', name: 'Role & RBAC Matrix', desc: 'Security access control matrix and page assignment engine', category: 'admin' },
@@ -153,6 +155,9 @@ export interface BaseRequest {
   clientCompany?: string;
   assignedOperatorId?: string;
   assignedOperatorName?: string;
+  assignedAuthorizerId?: string;
+  assignedAuthorizerName?: string;
+  rejectionReason?: string;
   createdAt: string;
   updatedAt: string;
   resolvedAt?: string;
@@ -196,12 +201,17 @@ export interface CmaStatus {
   configure?: boolean;
   configuredAt?: string;
   configuredBy?: string;
+  configuredById?: string;
   make?: boolean;
   madeAt?: string;
   madeBy?: string;
+  madeById?: string;
   authorize?: boolean;
   authorizedAt?: string;
   authorizedBy?: string;
+  authorizedById?: string;
+  authorizerId?: string;
+  authorizerName?: string;
   authorizedAmount?: number;
 }
 
@@ -224,6 +234,8 @@ export interface HoldingWithdrawRequest extends BaseRequest {
   cmaStatus?: CmaStatus;
   authorizedAmount?: number;
 }
+
+export type HoldingRequest = HoldingDepositRequest | HoldingWithdrawRequest;
 
 export type ServiceRequest = SupportTicket | HoldingDepositRequest | HoldingWithdrawRequest;
 
@@ -249,7 +261,7 @@ export interface RolePermissions {
 // ============================================================================
 
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
-export type NotificationCategory = 'request_update' | 'assignment' | 'new_request' | 'system' | 'mention';
+export type NotificationCategory = 'request_update' | 'assignment' | 'new_request' | 'system' | 'mention' | 'global_notice';
 
 export interface Notification {
   id: string;
@@ -261,6 +273,21 @@ export interface Notification {
   requestId?: string;
   isRead: boolean;
   createdAt: string;
+}
+
+/**
+ * A persistent, admin-authored broadcast notice displayed as a banner
+ * on the main dashboard for ALL users until deactivated or expired.
+ */
+export interface GlobalNotice {
+  id: string;
+  title: string;
+  message: string;
+  type: NotificationType;   // 'info' | 'success' | 'warning' | 'error'
+  createdAt: string;
+  createdByName: string;
+  expiresAt?: string;       // ISO string — auto-hide after this timestamp if set
+  isActive: boolean;        // Admin can deactivate without deleting
 }
 
 export type AuditTargetType = 'request' | 'user' | 'rbac' | 'system';
@@ -290,4 +317,30 @@ export interface FilterState {
   operatorFilter: 'all' | string;
   dateRange: 'all' | 'today' | '7d' | '30d' | '90d';
   clientId?: string;
+}
+
+// ============================================================================
+// AUTO ASSIGNMENT — TYPE-WISE RULES
+// ============================================================================
+
+/**
+ * Per-request-type assignment rule.
+ * For Limit (withdraw) requests: operatorId = Maker, authorizerId = Authorizer.
+ * For Support / Deposit requests: operatorId = assigned handler, authorizerId unused.
+ */
+export interface TypeWiseAssignmentRule {
+  operatorId: string;
+  operatorName: string;
+  /** Only used for 'limit' (withdraw) request type */
+  authorizerId?: string;
+  authorizerName?: string;
+}
+
+export interface AssignmentConfig {
+  autoAssignmentEnabled: boolean;
+  rules: {
+    limit: TypeWiseAssignmentRule | null;   // Withdraw / CMA requests
+    support: TypeWiseAssignmentRule | null; // Support tickets
+    deposit: TypeWiseAssignmentRule | null; // Deposit requests
+  };
 }
