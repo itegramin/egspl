@@ -82,27 +82,31 @@ Configure the following secrets in **GitHub > Repository Settings > Secrets and 
 
 The CI/CD workflow is located at [`.github/workflows/azure-static-web-apps.yml`](file:///.github/workflows/azure-static-web-apps.yml).
 
-### Workflow Triggers:
-- **`push` to `uat` branch**: Builds and deploys directly to the UAT environment.
-- **`push` to `prod` branch**: Builds and deploys to the Production environment.
-- **`pull_request` against `prod`**: Deploys a staging preview environment, and destroys it when the PR is merged or closed.
+### Workflow Jobs & Triggers:
+- **Job 1 (`deploy_uat`)**: Runs strictly on `push` to `uat`. Builds and deploys directly to the UAT Azure Static Web App using `AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_FOREST_025553500`.
+- **Job 2 (`deploy_prod`)**: Runs on `pull_request` against `prod` (creates or updates a temporary staging preview environment) AND on `push` to `prod` (when a PR is merged into production for live release). Uses `AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_OCEAN_0DF4CC600`.
+- **Job 3 (`close_prod_pr`)**: Runs when a PR targeting `prod` is closed (or merged). Tells Azure Static Web Apps to destroy the temporary PR staging environment.
 
-### Key Deployment Step:
+### Job Configuration Breakdown:
 ```yaml
-      - name: Build And Deploy
-        id: builddeploy
-        uses: Azure/static-web-apps-deploy@v1
-        with:
-          azure_static_web_apps_api_token: ${{ github.ref == 'refs/heads/uat' && secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_FOREST_025553500 || secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_OCEAN_0DF4CC600 }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "/"
-          api_location: ""
-          output_location: "dist"
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
+# 1. UAT Push Deployment
+deploy_uat:
+  if: github.event_name == 'push' && github.ref == 'refs/heads/uat'
+  ...
+  azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_FOREST_025553500 }}
+
+# 2. Production PR Preview & Live Release Deployment
+deploy_prod:
+  if: (github.event_name == 'pull_request' && github.base_ref == 'prod' && github.event.action != 'closed') || (github.event_name == 'push' && github.ref == 'refs/heads/prod')
+  ...
+  azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_OCEAN_0DF4CC600 }}
+
+# 3. Clean up PR Staging Environment
+close_prod_pr:
+  if: github.event_name == 'pull_request' && github.base_ref == 'prod' && github.event.action == 'closed'
+  ...
+  azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_OCEAN_0DF4CC600 }}
+  action: "close"
 ```
 
 ---
