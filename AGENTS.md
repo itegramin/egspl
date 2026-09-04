@@ -42,6 +42,10 @@ When making any code changes, all AI agents **must strictly adhere** to the foll
    - `vite.config.ts` uses `build.rollupOptions.output.manualChunks` to split heavy libraries (`recharts`, `@supabase/supabase-js`, `lottie-react`, `lucide-react`, `canvas-confetti`) into cacheable edge chunks.
    - When importing large third-party libraries, ensure you do NOT introduce circular chunk dependencies.
 
+5. **Image Compression & 500 KB Attachment Constraint**:
+   - All images attached to support tickets and deposit slips MUST stay strictly below **500 KB** (`MAX_ALLOWED_FILE_SIZE_BYTES` in `src/lib/imageCompression.ts`).
+   - Image uploads in `CreateRequestModal.tsx` trigger `ImageCompressionModal.tsx` for cropping, brightness/contrast adjustments, 1-click Document Mode (for bank counterfoils and receipts), and adaptive quality/dimension compression before upload.
+
 ---
 
 ## 3. Tech Stack Reference

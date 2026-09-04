@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { uploadAttachmentsToSupabase } from '../../lib/supabase';
 import { AmountInWords } from '../common/AmountInWords';
 import { formatAmountInWords } from '../../lib/indianCurrency';
+import { ImageCompressionModal } from '../common/ImageCompressionModal';
+import { CompressionResult, formatBytes } from '../../lib/imageCompression';
 import { RequestType, RequestPriority, SupportTicket, HoldingDepositRequest, HoldingWithdrawRequest } from '../../types';
 import {
   X,
@@ -19,7 +21,9 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  Sliders,
+  Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -44,6 +48,12 @@ export const CreateRequestModal: React.FC = () => {
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // Image compression modal state
+  const [compressModalFile, setCompressModalFile] = useState<File | null>(null);
+  const [compressModalDataUrl, setCompressModalDataUrl] = useState<string | undefined>(undefined);
+  const [compressModalIndex, setCompressModalIndex] = useState<number | null>(null);
+  const [isCompressModalOpen, setIsCompressModalOpen] = useState(false);
+
   // Support Ticket Form State
   const [supportTitle, setSupportTitle] = useState('');
   const [supportCategory, setSupportCategory] = useState<SupportTicket['category']>('matm');
@@ -57,21 +67,21 @@ export const CreateRequestModal: React.FC = () => {
   const [depositMethod, setDepositMethod] = useState<HoldingDepositRequest['depositMethod']>('bank_deposit');
   const [depositTxRef, setDepositTxRef] = useState('');
   const [depositBranchCode, setDepositBranchCode] = useState('');
-  const [depositSender, setDepositSender] = useState(user.name);
-  const [kioskId, setKioskId] = useState(user.kioskId || '');
+  const [depositSender, setDepositSender] = useState(user?.name || '');
+  const [kioskId, setKioskId] = useState(user?.kioskId || '');
   const [depositDate, setDepositDate] = useState(new Date().toISOString().split('T')[0]);
   const [depositDesc, setDepositDesc] = useState('');
 
   // Withdraw Form State
   const [withdrawAmount, setWithdrawAmount] = useState<string>('');
-  const [withdrawCurrency, setWithdrawCurrency] = useState(user.currency || 'INR');
+  const [withdrawCurrency, setWithdrawCurrency] = useState(user?.currency || 'INR');
   const [withdrawMethod, setWithdrawMethod] = useState<HoldingWithdrawRequest['withdrawMethod']>('bank_transfer');
-  const [beneficiaryName, setBeneficiaryName] = useState<string>(user.companyName || user.name);
-  const [beneficiaryAccount, setBeneficiaryAccount] = useState<string>(user.account);
+  const [beneficiaryName, setBeneficiaryName] = useState<string>(user?.companyName || user?.name || '');
+  const [beneficiaryAccount, setBeneficiaryAccount] = useState<string>(user?.account || '');
   const [showBeneficiaryAccount, setShowBeneficiaryAccount] = useState<boolean>(false);
-  const [bankName, setBankName] = useState<string>(user.bank);
-  const [branchCode, setBranchCode] = useState<string>(user.ifsc);
-  const [ifscCode, setIfscCode] = useState<string>(user.ifsc);
+  const [bankName, setBankName] = useState<string>(user?.bank || '');
+  const [branchCode, setBranchCode] = useState<string>(user?.ifsc || '');
+  const [ifscCode, setIfscCode] = useState<string>(user?.ifsc || '');
   const [withdrawReason, setWithdrawReason] = useState<string>('');
   const [withdrawDesc, setWithdrawDesc] = useState<string>('');
 
@@ -99,7 +109,9 @@ export const CreateRequestModal: React.FC = () => {
     const maxFileSize = 10 * 1024 * 1024; // 10MB
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain'];
 
-    Array.from(files).forEach(file => {
+    const fileList = Array.from(files);
+
+    fileList.forEach(file => {
       if (file.size > maxFileSize) {
         setUploadError(`File "${file.name}" exceeds maximum allowed size of 10MB.`);
         return;
@@ -109,6 +121,16 @@ export const CreateRequestModal: React.FC = () => {
         return;
       }
 
+      // If file is an image, open interactive compression & enhancement modal
+      if (file.type.startsWith('image/')) {
+        setCompressModalFile(file);
+        setCompressModalDataUrl(undefined);
+        setCompressModalIndex(null);
+        setIsCompressModalOpen(true);
+        return;
+      }
+
+      // Non-image files (e.g. PDF) attach directly
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
@@ -125,6 +147,57 @@ export const CreateRequestModal: React.FC = () => {
       };
       reader.readAsDataURL(file);
     });
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleCompressionApplied = (result: CompressionResult) => {
+    if (compressModalIndex !== null) {
+      // Replaced existing attachment
+      setAttachments(prev =>
+        prev.map((att, idx) =>
+          idx === compressModalIndex
+            ? {
+                name: result.file.name,
+                size: result.size,
+                type: result.format,
+                url: result.dataUrl,
+                file: result.file,
+              }
+            : att
+        )
+      );
+      toast('Attachment optimized & updated successfully.', 'success');
+    } else {
+      // Attached new optimized image
+      setAttachments(prev => [
+        ...prev,
+        {
+          name: result.file.name,
+          size: result.size,
+          type: result.format,
+          url: result.dataUrl,
+          file: result.file,
+        },
+      ]);
+      toast(`Image compressed to ${formatBytes(result.size)} (< 500 KB) and attached.`, 'success');
+    }
+
+    setCompressModalFile(null);
+    setCompressModalDataUrl(undefined);
+    setCompressModalIndex(null);
+    setIsCompressModalOpen(false);
+  };
+
+  const openCompressModalForIndex = (idx: number) => {
+    const att = attachments[idx];
+    if (!att) return;
+    setCompressModalFile(att.file || null);
+    setCompressModalDataUrl(att.url);
+    setCompressModalIndex(idx);
+    setIsCompressModalOpen(true);
   };
 
   const removeAttachment = (index: number) => {
@@ -142,15 +215,19 @@ export const CreateRequestModal: React.FC = () => {
     setDepositBranchCode('');
     setDepositDesc('');
     setWithdrawAmount('');
-    setKioskId(user.kioskId || '');
-    setBeneficiaryName(user.companyName || user.name || '');
-    setBeneficiaryAccount(user.account || '');
-    setBankName(user.bank || '');
-    setIfscCode(user.ifsc || '');
+    setKioskId(user?.kioskId || '');
+    setBeneficiaryName(user?.companyName || user?.name || '');
+    setBeneficiaryAccount(user?.account || '');
+    setBankName(user?.bank || '');
+    setIfscCode(user?.ifsc || '');
     setWithdrawReason('');
     setWithdrawDesc('');
     setAttachments([]);
     setUploadError(null);
+    setCompressModalFile(null);
+    setCompressModalDataUrl(undefined);
+    setCompressModalIndex(null);
+    setIsCompressModalOpen(false);
   };
 
   const handleClose = () => {
@@ -830,6 +907,10 @@ export const CreateRequestModal: React.FC = () => {
                   <p className="text-[11px] text-slate-400 mt-1">
                     PNG, JPG, WebP or PDF (max. 10MB per file)
                   </p>
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold border border-indigo-200 dark:border-indigo-800">
+                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                    <span>Auto Image Compression & Enhancement (&lt; 500 KB) enabled</span>
+                  </div>
                 </div>
 
                 {uploadError && (
@@ -842,43 +923,69 @@ export const CreateRequestModal: React.FC = () => {
                 {/* Uploaded Files Preview Grid */}
                 {attachments.length > 0 && (
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                    {attachments.map((file, idx) => (
-                      <div
-                        key={idx}
-                        className="relative group p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center gap-2 overflow-hidden"
-                      >
-                        {file.type.startsWith('image/') ? (
-                          <img
-                            src={file.url}
-                            alt={file.name}
-                            className="w-10 h-10 object-cover rounded bg-slate-100 shrink-0"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-                            <FileText className="w-5 h-5" />
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
-                            {file.name}
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            {(file.size / 1024).toFixed(0)} KB
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeAttachment(idx);
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                          title="Remove file"
+                    {attachments.map((file, idx) => {
+                      const isImage = file.type.startsWith('image/');
+                      const isOptimized = file.size <= 500 * 1024;
+                      return (
+                        <div
+                          key={idx}
+                          className="relative group p-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center gap-2 overflow-hidden shadow-xs"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
+                          {isImage ? (
+                            <img
+                              src={file.url}
+                              alt={file.name}
+                              className="w-10 h-10 object-cover rounded bg-slate-100 dark:bg-slate-900 shrink-0 border border-slate-200 dark:border-slate-700"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                              <FileText className="w-5 h-5" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                              {file.name}
+                            </p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <span className="text-[10px] text-slate-400">
+                                {formatBytes(file.size)}
+                              </span>
+                              {isImage && isOptimized && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                                  &lt;500KB
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0">
+                            {isImage && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openCompressModalForIndex(idx);
+                                }}
+                                className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                                title="Crop, enhance & re-compress"
+                              >
+                                <Sliders className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeAttachment(idx);
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                              title="Remove file"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -915,6 +1022,20 @@ export const CreateRequestModal: React.FC = () => {
           </form>
         </motion.div>
       </div>
+
+      {/* Image Compression & Enhancement Modal */}
+      <ImageCompressionModal
+        isOpen={isCompressModalOpen}
+        file={compressModalFile}
+        initialDataUrl={compressModalDataUrl}
+        onApply={handleCompressionApplied}
+        onClose={() => {
+          setIsCompressModalOpen(false);
+          setCompressModalFile(null);
+          setCompressModalDataUrl(undefined);
+          setCompressModalIndex(null);
+        }}
+      />
     </AnimatePresence>
   );
 };

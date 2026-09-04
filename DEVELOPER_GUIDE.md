@@ -320,6 +320,12 @@ A distinguishing feature of E-Gramin CSMP is its native support for the **Indian
 - Powered by [Recharts](https://recharts.org/).
 - Visualizes ticket intake trends over time, request category distributions, resolution SLA breach rates, and operator volume distribution.
 
+### 9.5 Image Compression, Cropping & Document Enhancement Engine (`src/lib/imageCompression.ts`, `src/components/common/ImageCompressionModal.tsx`)
+- **Strict &lt; 500 KB Optimization**: All images uploaded for deposit slips or support tickets are automatically routed through client-side adaptive compression, scaling dimensions and tuning quality to strictly stay below 500 KB before upload to Supabase Storage.
+- **Aspect Ratio Cropping**: Includes presets for Free, 1:1, 4:3, 16:9, and 3:4 (Document/Receipt).
+- **Document Mode (Auto-Enhance)**: 1-click high-contrast filter specially tuned for faded bank counterfoils, receipts, and deposit slips.
+- **Re-Editing Attachments**: Users can click the edit icon on any uploaded thumbnail to re-tune, crop, or re-compress an image anytime before submission.
+
 ---
 
 ## 10. Security & Session Architecture
