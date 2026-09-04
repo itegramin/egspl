@@ -7,24 +7,20 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "node -e \"const fs=require('fs'); fs.rmSync('dist', {recursive:true, force:true});\"",
     "lint": "tsc --noEmit",
-    "db:migrate": "tsx scripts/migrate.ts",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "db:migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
     "canvas-confetti": "^1.9.4",
-    "dotenv": "^17.2.3",
     "lottie-react": "^3.1.1",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-router-dom": "^7.18.3",
-    "recharts": "^3.10.1",
-    "supabase": "^2.116.0"
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -34,8 +30,8 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
     "esbuild": "^0.28.2",
-    "gh-pages": "^6.3.0",
     "pg": "^8.23.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
