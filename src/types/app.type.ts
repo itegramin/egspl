@@ -320,20 +320,66 @@ export interface FilterState {
 }
 
 // ============================================================================
-// AUTO ASSIGNMENT — TYPE-WISE RULES
+// AUTO ASSIGNMENT — TYPE-WISE RULES & MULTI-HANDLER POOLS
 // ============================================================================
+
+export interface HandlerMember {
+  id: string;
+  name: string;
+  role?: string;
+  email?: string;
+}
 
 /**
  * Per-request-type assignment rule.
- * For Limit (withdraw) requests: operatorId = Maker, authorizerId = Authorizer.
- * For Support / Deposit requests: operatorId = assigned handler, authorizerId unused.
+ * Supports both single legacy handler (operatorId / operatorName) and
+ * multiple handlers (handlers: HandlerMember[]).
+ *
+ * For Limit (withdraw) requests:
+ * - handlers / operatorId: Maker / Operator
+ * - authorizers / authorizerId: Authorizer / Checker
  */
 export interface TypeWiseAssignmentRule {
-  operatorId: string;
-  operatorName: string;
+  /** Primary / legacy single operator ID */
+  operatorId?: string;
+  /** Primary / legacy single operator name */
+  operatorName?: string;
+  /** Pool of configured operators/handlers for auto load balancing */
+  handlers?: HandlerMember[];
+
   /** Only used for 'limit' (withdraw) request type */
   authorizerId?: string;
   authorizerName?: string;
+  /** Pool of configured authorizers for limit requests */
+  authorizers?: HandlerMember[];
+}
+
+/**
+ * Normalize handlers array from rule, supporting both multiple handlers and legacy single fields.
+ */
+export function getRuleHandlers(rule: TypeWiseAssignmentRule | null | undefined): HandlerMember[] {
+  if (!rule) return [];
+  if (Array.isArray(rule.handlers) && rule.handlers.length > 0) {
+    return rule.handlers.filter(h => Boolean(h?.id?.trim()));
+  }
+  if (rule.operatorId && rule.operatorId.trim()) {
+    return [{ id: rule.operatorId.trim(), name: rule.operatorName || 'Assigned Operator' }];
+  }
+  return [];
+}
+
+/**
+ * Normalize authorizers array from rule, supporting both multiple authorizers and legacy single fields.
+ */
+export function getRuleAuthorizers(rule: TypeWiseAssignmentRule | null | undefined): HandlerMember[] {
+  if (!rule) return [];
+  if (Array.isArray(rule.authorizers) && rule.authorizers.length > 0) {
+    return rule.authorizers.filter(a => Boolean(a?.id?.trim()));
+  }
+  if (rule.authorizerId && rule.authorizerId.trim()) {
+    return [{ id: rule.authorizerId.trim(), name: rule.authorizerName || 'Assigned Authorizer' }];
+  }
+  return [];
 }
 
 export interface AssignmentConfig {
@@ -344,3 +390,4 @@ export interface AssignmentConfig {
     deposit: TypeWiseAssignmentRule | null; // Deposit requests
   };
 }
+

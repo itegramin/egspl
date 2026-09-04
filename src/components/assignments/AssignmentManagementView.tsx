@@ -5,6 +5,9 @@ import {
   ServiceRequest,
   HoldingWithdrawRequest,
   AssignmentConfig,
+  HandlerMember,
+  getRuleHandlers,
+  getRuleAuthorizers,
 } from '../../types';
 import { StatusBadge, PriorityBadge } from '../common/Badge';
 import { formatShortDateIST } from '../../lib/dateUtils';
@@ -23,6 +26,10 @@ import {
   ToggleRight,
   CheckCircle2,
   AlertTriangle,
+  X,
+  UserPlus,
+  Scale,
+  Database,
 } from 'lucide-react';
 
 type FilterTab = 'all' | 'unassigned' | 'limit' | 'support' | 'awaiting-auth';
@@ -47,78 +54,183 @@ function getCmaBadgeStyle(stage: string) {
   return 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800';
 }
 
-// ── Assignment Rules Config Panel ─────────────────────────────────────────────
-interface RuleRowProps {
-  label: string;
-  sublabel: string;
-  color: string;
-  operatorValue: string;
-  authorizerValue?: string;
-  showAuthorizer?: boolean;
+// ── Multi-Handler Member Pool Component ──────────────────────────────────────
+interface MemberPoolProps {
+  title: string;
+  members: HandlerMember[];
   staffUsers: { id: string; name: string; role: string }[];
-  onOperatorChange: (id: string, name: string) => void;
-  onAuthorizerChange?: (id: string, name: string) => void;
+  onAdd: (user: { id: string; name: string; role: string }) => void;
+  onRemove: (id: string) => void;
+  placeholder?: string;
+  isAuthorizer?: boolean;
 }
 
-const RuleRow: React.FC<RuleRowProps> = ({
-  label, sublabel, color,
-  operatorValue, authorizerValue,
-  showAuthorizer,
+const MemberPool: React.FC<MemberPoolProps> = ({
+  title,
+  members,
   staffUsers,
-  onOperatorChange, onAuthorizerChange,
-}) => (
-  <div className={`rounded-xl border p-4 space-y-3 ${color}`}>
-    <div>
-      <div className="text-sm font-semibold">{label}</div>
-      <div className="text-[11px] opacity-70">{sublabel}</div>
-    </div>
-    <div className="flex flex-col sm:flex-row gap-3">
-      <div className="flex-1 space-y-1">
-        <label className="text-[11px] font-semibold uppercase tracking-wide opacity-60">
-          {showAuthorizer ? 'Maker / Operator' : 'Assigned Handler'}
+  onAdd,
+  onRemove,
+  placeholder = 'No handlers configured',
+  isAuthorizer = false,
+}) => {
+  const [selectedId, setSelectedId] = useState('');
+  const availableStaff = staffUsers.filter(u => !members.some(m => m.id === u.id));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-semibold uppercase tracking-wide opacity-70 flex items-center gap-1.5">
+          <span>{title}</span>
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+            members.length > 0
+              ? isAuthorizer
+                ? 'bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300'
+                : 'bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300'
+              : 'bg-slate-200/70 dark:bg-slate-800 text-slate-500'
+          }`}>
+            {members.length} {members.length === 1 ? 'user' : 'users'}
+          </span>
         </label>
+        {members.length > 1 && !isAuthorizer && (
+          <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+            <Scale className="w-3 h-3" />
+            Load-balanced (least open tickets)
+          </span>
+        )}
+      </div>
+
+      {/* Selected Members Chips */}
+      <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800">
+        {members.length === 0 ? (
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 italic flex items-center gap-1 py-0.5 px-1">
+            <AlertTriangle className="w-3 h-3 text-amber-500" />
+            {placeholder}
+          </span>
+        ) : (
+          members.map(m => (
+            <span
+              key={m.id}
+              className={`inline-flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-lg text-xs font-medium border shadow-2xs ${
+                isAuthorizer
+                  ? 'bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-200 border-violet-200 dark:border-violet-800'
+                  : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 border-indigo-200 dark:border-indigo-800'
+              }`}
+            >
+              <span className={`w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                isAuthorizer
+                  ? 'bg-violet-200 dark:bg-violet-800 text-violet-800 dark:text-violet-100'
+                  : 'bg-indigo-200 dark:bg-indigo-800 text-indigo-800 dark:text-indigo-100'
+              }`}>
+                {m.name.charAt(0).toUpperCase()}
+              </span>
+              <span className="max-w-[130px] truncate">{m.name}</span>
+              {m.role && (
+                <span className="text-[9px] uppercase px-1 py-0.2 rounded bg-white/60 dark:bg-black/40 text-slate-500 dark:text-slate-400 font-semibold">
+                  {m.role}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => onRemove(m.id)}
+                title={`Remove ${m.name}`}
+                className="w-4 h-4 rounded hover:bg-rose-200 dark:hover:bg-rose-900/80 hover:text-rose-700 dark:hover:text-rose-200 flex items-center justify-center transition-colors text-slate-400 ml-0.5"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+
+      {/* Add Member Dropdown */}
+      {availableStaff.length > 0 ? (
         <div className="relative">
           <select
-            value={operatorValue}
+            value={selectedId}
             onChange={e => {
-              const sel = staffUsers.find(u => u.id === e.target.value);
-              onOperatorChange(e.target.value, sel?.name || '');
+              const val = e.target.value;
+              if (!val) return;
+              const sel = staffUsers.find(u => u.id === val);
+              if (sel) {
+                onAdd(sel);
+              }
+              setSelectedId('');
             }}
-            className="w-full pl-3 pr-8 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer"
+            className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-400 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 appearance-none cursor-pointer transition-colors"
           >
-            <option value="">— Not configured —</option>
-            {staffUsers.map(u => (
+            <option value="">+ Add {title.toLowerCase()}...</option>
+            {availableStaff.map(u => (
               <option key={u.id} value={u.id}>
                 {u.name} ({u.role})
               </option>
             ))}
           </select>
+          <UserPlus className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
           <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-50 pointer-events-none" />
         </div>
+      ) : (
+        <p className="text-[10px] text-slate-400 italic">All available operators/admins are already assigned to this rule.</p>
+      )}
+    </div>
+  );
+};
+
+// ── Assignment Rules Config Panel ─────────────────────────────────────────────
+interface RuleRowProps {
+  label: string;
+  sublabel: string;
+  color: string;
+  handlers: HandlerMember[];
+  authorizers?: HandlerMember[];
+  showAuthorizer?: boolean;
+  staffUsers: { id: string; name: string; role: string }[];
+  onAddHandler: (user: { id: string; name: string; role: string }) => void;
+  onRemoveHandler: (id: string) => void;
+  onAddAuthorizer?: (user: { id: string; name: string; role: string }) => void;
+  onRemoveAuthorizer?: (id: string) => void;
+}
+
+const RuleRow: React.FC<RuleRowProps> = ({
+  label,
+  sublabel,
+  color,
+  handlers,
+  authorizers = [],
+  showAuthorizer,
+  staffUsers,
+  onAddHandler,
+  onRemoveHandler,
+  onAddAuthorizer,
+  onRemoveAuthorizer,
+}) => (
+  <div className={`rounded-xl border p-4 space-y-3.5 ${color}`}>
+    <div>
+      <div className="text-sm font-semibold">{label}</div>
+      <div className="text-[11px] opacity-70">{sublabel}</div>
+    </div>
+    <div className="flex flex-col md:flex-row gap-4">
+      <div className="flex-1">
+        <MemberPool
+          title={showAuthorizer ? 'Maker / Handler Pool' : 'Handler Pool'}
+          members={handlers}
+          staffUsers={staffUsers}
+          onAdd={onAddHandler}
+          onRemove={onRemoveHandler}
+          placeholder="No handlers assigned (auto-assignment will skip this type)"
+        />
       </div>
-      {showAuthorizer && (
-        <div className="flex-1 space-y-1">
-          <label className="text-[11px] font-semibold uppercase tracking-wide opacity-60">
-            Authorizer (Checker)
-          </label>
-          <div className="relative">
-            <select
-              value={authorizerValue || ''}
-              onChange={e => {
-                const sel = staffUsers.find(u => u.id === e.target.value);
-                onAuthorizerChange?.(e.target.value, sel?.name || '');
-              }}
-              className="w-full pl-3 pr-8 py-2 text-xs rounded-lg border border-violet-200 dark:border-violet-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500 appearance-none cursor-pointer"
-            >
-              <option value="">— Not configured —</option>
-              {staffUsers.map(u => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role})
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 opacity-50 pointer-events-none" />
-          </div>
+      {showAuthorizer && onAddAuthorizer && onRemoveAuthorizer && (
+        <div className="flex-1">
+          <MemberPool
+            title="Authorizer (Checker) Pool"
+            members={authorizers}
+            staffUsers={staffUsers}
+            onAdd={onAddAuthorizer}
+            onRemove={onRemoveAuthorizer}
+            isAuthorizer={true}
+            placeholder="No authorizers assigned (requests will await manual sign-off)"
+          />
         </div>
       )}
     </div>
@@ -224,60 +336,126 @@ export const AssignmentManagementView: React.FC = () => {
   // Rule helpers
   const rules = assignmentConfig.rules;
 
-  const setRule = (type: 'limit' | 'support' | 'deposit', field: 'operator' | 'authorizer', id: string, name: string) => {
-    const current = rules[type] || { operatorId: '', operatorName: '' };
-    if (field === 'operator') {
-      const nextOpId = id || '';
-      const nextOpName = name || '';
-      if (!nextOpId && !current.authorizerId) {
-        updateAssignmentConfig({
-          rules: {
-            ...rules,
-            [type]: null,
-          },
-        });
-      } else {
-        updateAssignmentConfig({
-          rules: {
-            ...rules,
-            [type]: {
-              ...current,
-              operatorId: nextOpId,
-              operatorName: nextOpName,
-            },
-          },
-        });
-      }
+  const addHandler = (type: 'limit' | 'support' | 'deposit', member: { id: string; name: string; role: string }) => {
+    const current = rules[type] || {};
+    const currentHandlers = getRuleHandlers(current);
+    if (currentHandlers.some(h => h.id === member.id)) return;
+    const nextHandlers = [...currentHandlers, { id: member.id, name: member.name, role: member.role }];
+    const currentAuthorizers = getRuleAuthorizers(current);
+
+    updateAssignmentConfig({
+      rules: {
+        ...rules,
+        [type]: {
+          ...current,
+          operatorId: nextHandlers[0]?.id || '',
+          operatorName: nextHandlers[0]?.name || '',
+          handlers: nextHandlers,
+          authorizerId: currentAuthorizers[0]?.id || current.authorizerId,
+          authorizerName: currentAuthorizers[0]?.name || current.authorizerName,
+          authorizers: currentAuthorizers,
+        },
+      },
+    });
+    toast(`Added ${member.name} to ${type === 'limit' ? 'Limit (CMA)' : type === 'support' ? 'Support' : 'Deposit'} handler pool.`, 'success');
+  };
+
+  const removeHandler = (type: 'limit' | 'support' | 'deposit', memberId: string) => {
+    const current = rules[type];
+    if (!current) return;
+    const nextHandlers = getRuleHandlers(current).filter(h => h.id !== memberId);
+    const currentAuthorizers = getRuleAuthorizers(current);
+
+    if (nextHandlers.length === 0 && currentAuthorizers.length === 0) {
+      updateAssignmentConfig({
+        rules: {
+          ...rules,
+          [type]: null,
+        },
+      });
     } else {
-      const nextAuthId = id || undefined;
-      const nextAuthName = name || undefined;
-      if (!current.operatorId && !nextAuthId) {
-        updateAssignmentConfig({
-          rules: {
-            ...rules,
-            [type]: null,
+      updateAssignmentConfig({
+        rules: {
+          ...rules,
+          [type]: {
+            ...current,
+            operatorId: nextHandlers[0]?.id || '',
+            operatorName: nextHandlers[0]?.name || '',
+            handlers: nextHandlers,
+            authorizerId: currentAuthorizers[0]?.id || current.authorizerId,
+            authorizerName: currentAuthorizers[0]?.name || current.authorizerName,
+            authorizers: currentAuthorizers,
           },
-        });
-      } else {
-        updateAssignmentConfig({
-          rules: {
-            ...rules,
-            [type]: {
-              ...current,
-              authorizerId: nextAuthId,
-              authorizerName: nextAuthName,
-            },
-          },
-        });
-      }
+        },
+      });
     }
-    toast(`Assignment rule updated for ${type === 'limit' ? 'Limit (CMA)' : type === 'support' ? 'Support' : 'Deposit'} requests.`, 'success');
+    toast(`Removed handler from ${type === 'limit' ? 'Limit (CMA)' : type === 'support' ? 'Support' : 'Deposit'} rule.`, 'info');
+  };
+
+  const addAuthorizer = (type: 'limit' | 'support' | 'deposit', member: { id: string; name: string; role: string }) => {
+    const current = rules[type] || {};
+    const currentHandlers = getRuleHandlers(current);
+    const currentAuthorizers = getRuleAuthorizers(current);
+    if (currentAuthorizers.some(a => a.id === member.id)) return;
+    const nextAuthorizers = [...currentAuthorizers, { id: member.id, name: member.name, role: member.role }];
+
+    updateAssignmentConfig({
+      rules: {
+        ...rules,
+        [type]: {
+          ...current,
+          operatorId: currentHandlers[0]?.id || current.operatorId || '',
+          operatorName: currentHandlers[0]?.name || current.operatorName || '',
+          handlers: currentHandlers,
+          authorizerId: nextAuthorizers[0]?.id || '',
+          authorizerName: nextAuthorizers[0]?.name || '',
+          authorizers: nextAuthorizers,
+        },
+      },
+    });
+    toast(`Added ${member.name} to Authorizer pool for Limit requests.`, 'success');
+  };
+
+  const removeAuthorizer = (type: 'limit' | 'support' | 'deposit', memberId: string) => {
+    const current = rules[type];
+    if (!current) return;
+    const currentHandlers = getRuleHandlers(current);
+    const nextAuthorizers = getRuleAuthorizers(current).filter(a => a.id !== memberId);
+
+    if (currentHandlers.length === 0 && nextAuthorizers.length === 0) {
+      updateAssignmentConfig({
+        rules: {
+          ...rules,
+          [type]: null,
+        },
+      });
+    } else {
+      updateAssignmentConfig({
+        rules: {
+          ...rules,
+          [type]: {
+            ...current,
+            operatorId: currentHandlers[0]?.id || current.operatorId || '',
+            operatorName: currentHandlers[0]?.name || current.operatorName || '',
+            handlers: currentHandlers,
+            authorizerId: nextAuthorizers[0]?.id || '',
+            authorizerName: nextAuthorizers[0]?.name || '',
+            authorizers: nextAuthorizers,
+          },
+        },
+      });
+    }
+    toast(`Removed authorizer from Limit rule.`, 'info');
   };
 
   const isRuleComplete = (type: 'limit' | 'support' | 'deposit') => {
     const r = rules[type];
-    if (!r?.operatorId?.trim()) return false;
-    if (type === 'limit' && !r.authorizerId?.trim()) return false;
+    const handlers = getRuleHandlers(r);
+    if (handlers.length === 0) return false;
+    if (type === 'limit') {
+      const authorizers = getRuleAuthorizers(r);
+      if (authorizers.length === 0) return false;
+    }
     return true;
   };
 
@@ -319,9 +497,15 @@ export const AssignmentManagementView: React.FC = () => {
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-5 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Auto-Assignment Rules</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-white">Auto-Assignment Rules</h2>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                  <Database className="w-3 h-3" />
+                  Synced to Supabase
+                </span>
+              </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                New requests are automatically assigned to the configured staff when auto-assignment is enabled.
+                New requests are automatically load-balanced across the configured handler pool.
               </p>
             </div>
             {/* Toggle */}
@@ -362,12 +546,14 @@ export const AssignmentManagementView: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 border-violet-200 dark:border-violet-900/60'
                   : 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-900/50'
               }
-              operatorValue={rules.limit?.operatorId || ''}
-              authorizerValue={rules.limit?.authorizerId || ''}
+              handlers={getRuleHandlers(rules.limit)}
+              authorizers={getRuleAuthorizers(rules.limit)}
               showAuthorizer={true}
               staffUsers={staffUsers}
-              onOperatorChange={(id, name) => setRule('limit', 'operator', id, name)}
-              onAuthorizerChange={(id, name) => setRule('limit', 'authorizer', id, name)}
+              onAddHandler={user => addHandler('limit', user)}
+              onRemoveHandler={id => removeHandler('limit', id)}
+              onAddAuthorizer={user => addAuthorizer('limit', user)}
+              onRemoveAuthorizer={id => removeAuthorizer('limit', id)}
             />
 
             {/* Support Request Rule */}
@@ -379,10 +565,11 @@ export const AssignmentManagementView: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-900/60'
                   : 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-900/50'
               }
-              operatorValue={rules.support?.operatorId || ''}
+              handlers={getRuleHandlers(rules.support)}
               showAuthorizer={false}
               staffUsers={staffUsers}
-              onOperatorChange={(id, name) => setRule('support', 'operator', id, name)}
+              onAddHandler={user => addHandler('support', user)}
+              onRemoveHandler={id => removeHandler('support', id)}
             />
 
             {/* Deposit Request Rule */}
@@ -394,10 +581,11 @@ export const AssignmentManagementView: React.FC = () => {
                   ? 'bg-white dark:bg-slate-900 border-emerald-200 dark:border-emerald-900/60'
                   : 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-900/50'
               }
-              operatorValue={rules.deposit?.operatorId || ''}
+              handlers={getRuleHandlers(rules.deposit)}
               showAuthorizer={false}
               staffUsers={staffUsers}
-              onOperatorChange={(id, name) => setRule('deposit', 'operator', id, name)}
+              onAddHandler={user => addHandler('deposit', user)}
+              onRemoveHandler={id => removeHandler('deposit', id)}
             />
           </div>
 

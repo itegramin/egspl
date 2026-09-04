@@ -88,6 +88,7 @@ async function runMigration() {
     const resPermissions = await client.query('SELECT count(*) FROM csmp_role_permissions');
     const resAudit = await client.query('SELECT count(*) FROM csmp_audit_logs');
     const resNotifs = await client.query('SELECT count(*) FROM csmp_notifications');
+    const resSettings = await client.query('SELECT count(*) FROM csmp_settings');
 
     console.log('\n Database Summary:');
     console.log(`  - Users: ${resUsers.rows[0].count}`);
@@ -95,6 +96,7 @@ async function runMigration() {
     console.log(`  - Role Permissions: ${resPermissions.rows[0].count}`);
     console.log(`  - Audit Logs: ${resAudit.rows[0].count}`);
     console.log(`  - Notifications: ${resNotifs.rows[0].count}`);
+    console.log(`  - System Settings: ${resSettings.rows[0].count}`);
   } catch (err: any) {
     console.error('\n❌ Migration failed:', err.message || err);
 

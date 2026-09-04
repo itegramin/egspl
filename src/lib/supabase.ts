@@ -28,7 +28,9 @@ import type {
   RequestPriority,
   PageId,
   AssignmentConfig,
+  TypeWiseAssignmentRule,
 } from '../types/app.type';
+import { getRuleHandlers, getRuleAuthorizers } from '../types/app.type';
 
 const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey: string =
@@ -574,6 +576,21 @@ export async function savePermissionsToSupabase(_role: UserRole, _perms: RolePer
   // Hardcoded permissions array used - no-op for database writes
 }
 
+function normalizeAssignmentRule(rule: any): TypeWiseAssignmentRule | null {
+  if (!rule) return null;
+  const handlers = getRuleHandlers(rule);
+  const authorizers = getRuleAuthorizers(rule);
+  return {
+    ...rule,
+    operatorId: handlers[0]?.id || rule.operatorId || '',
+    operatorName: handlers[0]?.name || rule.operatorName || '',
+    handlers,
+    authorizerId: authorizers[0]?.id || rule.authorizerId || undefined,
+    authorizerName: authorizers[0]?.name || rule.authorizerName || undefined,
+    authorizers,
+  };
+}
+
 export async function fetchAssignmentConfigFromSupabase(): Promise<AssignmentConfig | null> {
   if (!isSupabaseConfigured) return null;
   try {
@@ -584,8 +601,17 @@ export async function fetchAssignmentConfigFromSupabase(): Promise<AssignmentCon
       .maybeSingle();
 
     if (error || !data?.value) return null;
-    return data.value as AssignmentConfig;
-  } catch {
+    const rawConfig = data.value as AssignmentConfig;
+    return {
+      autoAssignmentEnabled: Boolean(rawConfig.autoAssignmentEnabled),
+      rules: {
+        limit: normalizeAssignmentRule(rawConfig.rules?.limit),
+        support: normalizeAssignmentRule(rawConfig.rules?.support),
+        deposit: normalizeAssignmentRule(rawConfig.rules?.deposit),
+      },
+    };
+  } catch (err: any) {
+    console.warn('[Auto-Assign] Could not fetch assignment config from Supabase:', err?.message || err);
     return null;
   }
 }
@@ -593,13 +619,19 @@ export async function fetchAssignmentConfigFromSupabase(): Promise<AssignmentCon
 export async function saveAssignmentConfigToSupabase(config: AssignmentConfig): Promise<void> {
   if (!isSupabaseConfigured) return;
   try {
-    await supabase.from('csmp_settings').upsert({
+    const { error } = await supabase.from('csmp_settings').upsert({
       key: 'assignment_config',
       value: config,
       updated_at: new Date().toISOString(),
-    });
+    }, { onConflict: 'key' });
+
+    if (error) {
+      console.error('[Auto-Assign] Failed to persist assignment config to Supabase:', error.message, error.details || '');
+      throw error;
+    }
   } catch (err: any) {
     console.warn('[Auto-Assign] Could not persist assignment config to Supabase:', err?.message || err);
+    throw err;
   }
 }
 

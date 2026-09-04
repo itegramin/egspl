@@ -517,6 +517,10 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE csmp_audit_logs;
   EXCEPTION WHEN OTHERS THEN NULL;
   END;
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE csmp_settings;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
 END $$;
 
 -- -------------------------------------------------------------
@@ -575,3 +579,6 @@ CREATE POLICY "csmp-settings-read" ON csmp_settings
 DROP POLICY IF EXISTS "csmp-settings-write" ON csmp_settings;
 CREATE POLICY "csmp-settings-write" ON csmp_settings
   FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON TABLE csmp_settings TO anon, authenticated, service_role;
+

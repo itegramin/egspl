@@ -16,6 +16,8 @@ import {
   FilterState,
   UserRole,
   AssignmentConfig,
+  getRuleHandlers,
+  getRuleAuthorizers,
   GlobalNotice,
 } from '../types';
 import {
@@ -634,6 +636,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         }).catch(() => { });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'csmp_settings' }, (payload: any) => {
+        if (payload?.new && payload.new.key === 'assignment_config') {
+          fetchAssignmentConfigFromSupabase().then(latestConfig => {
+            if (latestConfig) {
+              setAssignmentConfig(latestConfig);
+              saveAssignmentConfig(latestConfig);
+            }
+          }).catch(() => { });
+        }
+      })
       .subscribe();
 
     // 3. Heartbeat Polling Interval (every 4 seconds) to guarantee sync across distributed instances
@@ -790,28 +802,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ── Auto-assignment helper ──────────────────────────────────────────────────
   // Applies the type-wise rule from assignmentConfig to a freshly created request.
-  // Returns a (possibly patched) copy of the request.
+  // When multiple handlers are configured, assigns to the handler with the lowest
+  // active workload (open tickets count).
   const autoAssignRequest = <T extends ServiceRequest>(req: T, type: 'support' | 'deposit' | 'limit'): T => {
     if (!assignmentConfig.autoAssignmentEnabled) return req;
     const rule = assignmentConfig.rules[type];
-    if (!rule || !rule.operatorId || !rule.operatorId.trim()) return req;
+    if (!rule) return req;
 
-    const opUser = allUsers.find(u => u.id === rule.operatorId.trim());
-    const operatorName = (rule.operatorName && rule.operatorName.trim()) || opUser?.name || 'Assigned Operator';
+    const handlers = getRuleHandlers(rule);
+    if (handlers.length === 0) return req;
+
+    // Pick handler from pool: choose the handler with lowest active workload
+    let chosenHandler = handlers[0];
+    if (handlers.length > 1) {
+      const activeCounts = new Map<string, number>();
+      handlers.forEach(h => activeCounts.set(h.id, 0));
+      for (const r of requests) {
+        if (r.status !== 'completed' && r.status !== 'rejected' && r.assignedOperatorId) {
+          if (activeCounts.has(r.assignedOperatorId)) {
+            activeCounts.set(r.assignedOperatorId, (activeCounts.get(r.assignedOperatorId) || 0) + 1);
+          }
+        }
+      }
+      const sorted = [...handlers].sort((a, b) => (activeCounts.get(a.id) || 0) - (activeCounts.get(b.id) || 0));
+      chosenHandler = sorted[0];
+    }
+
+    const opUser = allUsers.find(u => u.id === chosenHandler.id);
+    const operatorName = (chosenHandler.name && chosenHandler.name.trim()) || opUser?.name || 'Assigned Operator';
 
     const patched: T = {
       ...req,
-      assignedOperatorId: rule.operatorId.trim(),
+      assignedOperatorId: chosenHandler.id.trim(),
       assignedOperatorName: operatorName,
       status: 'in_progress' as const,
     };
 
     // For limit (withdraw / CMA) requests also assign the authorizer
-    if (type === 'limit' && rule.authorizerId && rule.authorizerId.trim()) {
-      const authUser = allUsers.find(u => u.id === rule.authorizerId?.trim());
-      const authorizerName = (rule.authorizerName && rule.authorizerName.trim()) || authUser?.name || 'Assigned Authorizer';
-      (patched as any).assignedAuthorizerId = rule.authorizerId.trim();
-      (patched as any).assignedAuthorizerName = authorizerName;
+    if (type === 'limit') {
+      const authorizers = getRuleAuthorizers(rule);
+      if (authorizers.length > 0) {
+        let chosenAuth = authorizers[0];
+        if (authorizers.length > 1) {
+          const authCounts = new Map<string, number>();
+          authorizers.forEach(a => authCounts.set(a.id, 0));
+          for (const r of requests) {
+            const authId = (r as any).assignedAuthorizerId;
+            if (r.status !== 'completed' && r.status !== 'rejected' && authId && authCounts.has(authId)) {
+              authCounts.set(authId, (authCounts.get(authId) || 0) + 1);
+            }
+          }
+          const sortedAuth = [...authorizers].sort((a, b) => (authCounts.get(a.id) || 0) - (authCounts.get(b.id) || 0));
+          chosenAuth = sortedAuth[0];
+        }
+        const authUser = allUsers.find(u => u.id === chosenAuth.id);
+        const authorizerName = (chosenAuth.name && chosenAuth.name.trim()) || authUser?.name || 'Assigned Authorizer';
+        (patched as any).assignedAuthorizerId = chosenAuth.id.trim();
+        (patched as any).assignedAuthorizerName = authorizerName;
+      }
     }
 
     return patched;

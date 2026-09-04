@@ -6,6 +6,9 @@ import {
   Notification,
   AuditLog,
   AssignmentConfig,
+  TypeWiseAssignmentRule,
+  getRuleHandlers,
+  getRuleAuthorizers,
   GlobalNotice,
 } from '../types';
 import { formatDateTimeIST } from './dateUtils';
@@ -146,6 +149,21 @@ export const DEFAULT_ASSIGNMENT_CONFIG: AssignmentConfig = {
   },
 };
 
+function normalizeStoredAssignmentRule(rule: any): TypeWiseAssignmentRule | null {
+  if (!rule) return null;
+  const handlers = getRuleHandlers(rule);
+  const authorizers = getRuleAuthorizers(rule);
+  return {
+    ...rule,
+    operatorId: handlers[0]?.id || rule.operatorId || '',
+    operatorName: handlers[0]?.name || rule.operatorName || '',
+    handlers,
+    authorizerId: authorizers[0]?.id || rule.authorizerId || undefined,
+    authorizerName: authorizers[0]?.name || rule.authorizerName || undefined,
+    authorizers,
+  };
+}
+
 export function getStoredAssignmentConfig(): AssignmentConfig {
   try {
     const raw = localStorage.getItem(ASSIGNMENT_CONFIG_KEY);
@@ -154,9 +172,9 @@ export function getStoredAssignmentConfig(): AssignmentConfig {
     return {
       autoAssignmentEnabled: typeof parsed.autoAssignmentEnabled === 'boolean' ? parsed.autoAssignmentEnabled : false,
       rules: {
-        limit: parsed.rules?.limit ?? null,
-        support: parsed.rules?.support ?? null,
-        deposit: parsed.rules?.deposit ?? null,
+        limit: normalizeStoredAssignmentRule(parsed.rules?.limit),
+        support: normalizeStoredAssignmentRule(parsed.rules?.support),
+        deposit: normalizeStoredAssignmentRule(parsed.rules?.deposit),
       },
     };
   } catch {
