@@ -559,5 +559,19 @@ CREATE POLICY "csmp-attachments-auth-delete" ON storage.objects
       OR (storage.foldername(name))[2] = auth.uid()::text
     )
   );
+-- 6. SYSTEM SETTINGS TABLE (Auto-assignment rules, platform config)
+CREATE TABLE IF NOT EXISTS csmp_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
+ALTER TABLE csmp_settings ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "csmp-settings-read" ON csmp_settings;
+CREATE POLICY "csmp-settings-read" ON csmp_settings
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "csmp-settings-write" ON csmp_settings;
+CREATE POLICY "csmp-settings-write" ON csmp_settings
+  FOR ALL USING (true) WITH CHECK (true);

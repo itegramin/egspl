@@ -134,6 +134,7 @@ export const AssignmentManagementView: React.FC = () => {
     permissions,
     assignmentConfig,
     updateAssignmentConfig,
+    toast,
   } = useApp();
   const { user, allUsers } = useAuth();
 
@@ -224,28 +225,59 @@ export const AssignmentManagementView: React.FC = () => {
   const rules = assignmentConfig.rules;
 
   const setRule = (type: 'limit' | 'support' | 'deposit', field: 'operator' | 'authorizer', id: string, name: string) => {
-    const existing = rules[type];
+    const current = rules[type] || { operatorId: '', operatorName: '' };
     if (field === 'operator') {
-      updateAssignmentConfig({
-        rules: {
-          ...rules,
-          [type]: id ? { ...(existing || {}), operatorId: id, operatorName: name } : null,
-        },
-      });
+      const nextOpId = id || '';
+      const nextOpName = name || '';
+      if (!nextOpId && !current.authorizerId) {
+        updateAssignmentConfig({
+          rules: {
+            ...rules,
+            [type]: null,
+          },
+        });
+      } else {
+        updateAssignmentConfig({
+          rules: {
+            ...rules,
+            [type]: {
+              ...current,
+              operatorId: nextOpId,
+              operatorName: nextOpName,
+            },
+          },
+        });
+      }
     } else {
-      updateAssignmentConfig({
-        rules: {
-          ...rules,
-          [type]: existing ? { ...existing, authorizerId: id || undefined, authorizerName: name || undefined } : null,
-        },
-      });
+      const nextAuthId = id || undefined;
+      const nextAuthName = name || undefined;
+      if (!current.operatorId && !nextAuthId) {
+        updateAssignmentConfig({
+          rules: {
+            ...rules,
+            [type]: null,
+          },
+        });
+      } else {
+        updateAssignmentConfig({
+          rules: {
+            ...rules,
+            [type]: {
+              ...current,
+              authorizerId: nextAuthId,
+              authorizerName: nextAuthName,
+            },
+          },
+        });
+      }
     }
+    toast(`Assignment rule updated for ${type === 'limit' ? 'Limit (CMA)' : type === 'support' ? 'Support' : 'Deposit'} requests.`, 'success');
   };
 
   const isRuleComplete = (type: 'limit' | 'support' | 'deposit') => {
     const r = rules[type];
-    if (!r?.operatorId) return false;
-    if (type === 'limit' && !r.authorizerId) return false;
+    if (!r?.operatorId?.trim()) return false;
+    if (type === 'limit' && !r.authorizerId?.trim()) return false;
     return true;
   };
 
@@ -295,7 +327,11 @@ export const AssignmentManagementView: React.FC = () => {
             {/* Toggle */}
             <button
               id="toggle-auto-assignment"
-              onClick={() => updateAssignmentConfig({ autoAssignmentEnabled: !assignmentConfig.autoAssignmentEnabled })}
+              onClick={() => {
+                const nextState = !assignmentConfig.autoAssignmentEnabled;
+                updateAssignmentConfig({ autoAssignmentEnabled: nextState });
+                toast(nextState ? 'Auto-assignment enabled.' : 'Auto-assignment disabled.', nextState ? 'success' : 'info');
+              }}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
                 assignmentConfig.autoAssignmentEnabled
                   ? 'bg-emerald-600 text-white border-emerald-600'

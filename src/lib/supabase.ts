@@ -27,6 +27,7 @@ import type {
   RequestStatus,
   RequestPriority,
   PageId,
+  AssignmentConfig,
 } from '../types/app.type';
 
 const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || '';
@@ -571,6 +572,35 @@ export async function fetchPermissionsFromSupabase(): Promise<Record<UserRole, R
 
 export async function savePermissionsToSupabase(_role: UserRole, _perms: RolePermissions): Promise<void> {
   // Hardcoded permissions array used - no-op for database writes
+}
+
+export async function fetchAssignmentConfigFromSupabase(): Promise<AssignmentConfig | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('csmp_settings')
+      .select('value')
+      .eq('key', 'assignment_config')
+      .maybeSingle();
+
+    if (error || !data?.value) return null;
+    return data.value as AssignmentConfig;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAssignmentConfigToSupabase(config: AssignmentConfig): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    await supabase.from('csmp_settings').upsert({
+      key: 'assignment_config',
+      value: config,
+      updated_at: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    console.warn('[Auto-Assign] Could not persist assignment config to Supabase:', err?.message || err);
+  }
 }
 
 

@@ -56,6 +56,8 @@ import {
   generateTicketNumber,
   queueRequestForRetry,
   flushPendingRequestSync,
+  fetchAssignmentConfigFromSupabase,
+  saveAssignmentConfigToSupabase,
 } from '../lib/supabase';
 import { ThemeConfig, getStoredTheme, applyTheme, DEFAULT_THEME } from '../lib/theme';
 import { useAuth } from './AuthContext';
@@ -364,8 +366,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateAssignmentConfig = (updates: Partial<AssignmentConfig>) => {
     setAssignmentConfig(prev => {
-      const next = { ...prev, ...updates, rules: { ...prev.rules, ...(updates.rules || {}) } };
+      const nextRules = updates.rules !== undefined ? { ...prev.rules, ...updates.rules } : prev.rules;
+      const next: AssignmentConfig = {
+        ...prev,
+        ...updates,
+        rules: nextRules,
+      };
       saveAssignmentConfig(next);
+
+      // Persist to Supabase if configured
+      saveAssignmentConfigToSupabase(next).catch(() => {});
+
+      // Broadcast across tabs on the same device via BroadcastChannel
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('csmp_live_sync');
+          bc.postMessage({ type: 'ASSIGNMENT_CONFIG_UPDATED', payload: next });
+          bc.close();
+        } catch { /* ignore */ }
+      }
+
       return next;
     });
   };
@@ -447,10 +467,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsSupabaseConnected(health.connected);
 
       if (health.connected) {
-        const [dbReqs, dbNotifs, dbAudit] = await Promise.all([
+        const [dbReqs, dbNotifs, dbAudit, dbAssignmentConfig] = await Promise.all([
           fetchRequestsFromSupabase().catch(() => null),
           fetchNotificationsFromSupabase().catch(() => null),
           fetchAuditLogsFromSupabase().catch(() => null),
+          fetchAssignmentConfigFromSupabase().catch(() => null),
         ]);
 
         if (dbReqs && dbReqs.length > 0) {
@@ -464,6 +485,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbAudit && dbAudit.length > 0) {
           setAuditLogs(dbAudit);
           saveAuditLogs(dbAudit);
+        }
+        if (dbAssignmentConfig) {
+          setAssignmentConfig(dbAssignmentConfig);
+          saveAssignmentConfig(dbAssignmentConfig);
         }
       }
     } catch (err: any) {
@@ -519,6 +544,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             savePermissions(next);
             return next;
           });
+        } else if (event.data?.type === 'ASSIGNMENT_CONFIG_UPDATED' && event.data?.payload) {
+          // Another tab updated assignment rules — sync into state and storage
+          const incomingConfig = event.data.payload as AssignmentConfig;
+          setAssignmentConfig(incomingConfig);
+          saveAssignmentConfig(incomingConfig);
         }
       };
     }
@@ -764,19 +794,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const autoAssignRequest = <T extends ServiceRequest>(req: T, type: 'support' | 'deposit' | 'limit'): T => {
     if (!assignmentConfig.autoAssignmentEnabled) return req;
     const rule = assignmentConfig.rules[type];
-    if (!rule) return req;
+    if (!rule || !rule.operatorId || !rule.operatorId.trim()) return req;
+
+    const opUser = allUsers.find(u => u.id === rule.operatorId.trim());
+    const operatorName = (rule.operatorName && rule.operatorName.trim()) || opUser?.name || 'Assigned Operator';
 
     const patched: T = {
       ...req,
-      assignedOperatorId: rule.operatorId,
-      assignedOperatorName: rule.operatorName,
+      assignedOperatorId: rule.operatorId.trim(),
+      assignedOperatorName: operatorName,
       status: 'in_progress' as const,
     };
 
-    // For limit (CMA) requests also assign the authorizer
-    if (type === 'limit' && rule.authorizerId) {
-      (patched as any).assignedAuthorizerId = rule.authorizerId;
-      (patched as any).assignedAuthorizerName = rule.authorizerName || '';
+    // For limit (withdraw / CMA) requests also assign the authorizer
+    if (type === 'limit' && rule.authorizerId && rule.authorizerId.trim()) {
+      const authUser = allUsers.find(u => u.id === rule.authorizerId?.trim());
+      const authorizerName = (rule.authorizerName && rule.authorizerName.trim()) || authUser?.name || 'Assigned Authorizer';
+      (patched as any).assignedAuthorizerId = rule.authorizerId.trim();
+      (patched as any).assignedAuthorizerName = authorizerName;
     }
 
     return patched;
@@ -863,6 +898,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       data.priority === 'urgent' ? 'warning' : 'info',
       assignedTicket.id
     );
+
+    // 3. Direct notification to assigned operator
+    if (assignedTicket.assignedOperatorId) {
+      dispatchNotification(
+        assignedTicket.assignedOperatorId,
+        `Assigned to ${ticketNumber}`,
+        `Support ticket "${data.title}" submitted by ${user.name} was automatically assigned to you.`,
+        'assignment',
+        data.priority === 'urgent' ? 'warning' : 'info',
+        assignedTicket.id
+      );
+    }
 
     toast(`Support ticket ${ticketNumber} submitted successfully!`, 'success');
     return assignedTicket;
@@ -959,6 +1006,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'warning',
       assignedDeposit.id
     );
+
+    // 3. Direct notification to assigned operator
+    if (assignedDeposit.assignedOperatorId) {
+      dispatchNotification(
+        assignedDeposit.assignedOperatorId,
+        `Assigned to ${ticketNumber}`,
+        `Deposit confirmation request for ${data.currency} ${data.amount.toLocaleString()} submitted by ${user.name} was automatically assigned to you.`,
+        'assignment',
+        'info',
+        assignedDeposit.id
+      );
+    }
 
     toast(`Deposit update request ${ticketNumber} logged. Operator will verify transaction.`, 'success');
     return assignedDeposit;
@@ -1061,6 +1120,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'warning',
       assignedWithdraw.id
     );
+
+    // 3. Direct notification to assigned maker operator
+    if (assignedWithdraw.assignedOperatorId) {
+      dispatchNotification(
+        assignedWithdraw.assignedOperatorId,
+        `Assigned as Maker: ${ticketNumber}`,
+        `Withdrawal request for ${data.currency} ${data.amount.toLocaleString()} submitted by ${user.name} was automatically assigned to you.`,
+        'assignment',
+        'info',
+        assignedWithdraw.id
+      );
+    }
+
+    // 4. Direct notification to assigned authorizer
+    if ((assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId) {
+      dispatchNotification(
+        (assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId!,
+        `Assigned as Authorizer: ${ticketNumber}`,
+        `Withdrawal request for ${data.currency} ${data.amount.toLocaleString()} submitted by ${user.name} requires your authorization.`,
+        'assignment',
+        'warning',
+        assignedWithdraw.id
+      );
+    }
 
     toast(`Withdrawal request ${ticketNumber} submitted for compliance approval.`, 'success');
     return assignedWithdraw;

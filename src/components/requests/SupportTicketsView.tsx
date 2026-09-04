@@ -65,15 +65,17 @@ export const SupportTicketsView: React.FC = () => {
     [allUsers]
   );
 
-  // Requirement: "make only assigned requsts is avaiable in that list"
+  // Client view: All own requests (assigned or unassigned). Staff view: Only assigned requests.
   const assignedSupportTickets = useMemo(() => {
     return requests.filter(r => {
       if (r.type !== 'support') return false;
 
-      // Clients only see their own requests
-      if (user?.role === 'client' && r.clientId !== user?.id) return false;
+      // Clients see all requests of their own whether assigned to someone or not
+      if (user?.role === 'client') {
+        return r.clientId === user.id;
+      }
 
-      // Must be an assigned request
+      // Staff (operator / admin): Must be an assigned request
       const isAssigned = Boolean(r.assignedOperatorId && r.assignedOperatorId.trim() !== '');
       if (!isAssigned) return false;
 

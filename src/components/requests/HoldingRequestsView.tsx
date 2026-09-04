@@ -83,13 +83,15 @@ export const HoldingRequestsView: React.FC = () => {
     [allUsers]
   );
 
-  // Requirement: "make only assigned requsts is avaiable in that list"
+  // Client view: All own requests (assigned or unassigned). Staff view: Only assigned requests.
   const assignedHoldingReqs = useMemo(() => {
     return requests.filter((r): r is HoldingRequest => {
       if (r.type !== 'deposit' && r.type !== 'withdraw') return false;
 
-      // Client only sees their own
-      if (user?.role === 'client' && r.clientId !== user.id) return false;
+      // Clients see all requests of their own whether assigned to someone or not
+      if (user?.role === 'client') {
+        return r.clientId === user.id;
+      }
 
       const hasOp = Boolean(r.assignedOperatorId && r.assignedOperatorId.trim() !== '');
       const hasAuth =
@@ -99,7 +101,7 @@ export const HoldingRequestsView: React.FC = () => {
           (r as HoldingWithdrawRequest).assignedAuthorizerId?.trim() !== ''
         );
 
-      // Must be an assigned request
+      // Staff: Must be an assigned request
       if (!hasOp && !hasAuth) return false;
 
       return true;
