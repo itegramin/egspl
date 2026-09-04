@@ -1,0 +1,11 @@
+# Cursor Rules & AI Memory for E-Gramin CSMP
+
+Read and adhere to the project memory, architecture constraints, and developer recipes in:
+AGENTS.md
+
+Key Rules:
+1. Always keep `base: '/'` in vite.config.ts for Azure Static Web Apps.
+2. Never delete staticwebapp.config.json.
+3. Run `npm run lint` and `npm run build` to verify any modifications.
+4. Support dark mode (`dark:...`) for all new UI components.
+5. Format Indian currency figures via `src/lib/indianCurrency.ts`.

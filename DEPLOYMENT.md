@@ -1,537 +1,200 @@
-# 🚀 Enterprise Production Deployment & Infrastructure Guide
+# 🚀 Azure Static Web Apps Deployment & Operations Guide
 
-This guide details how to deploy the **ServiceCore Client Service Management Platform (CSMP)** to production environments with maximum reliability, security, enterprise compliance, and performance.
+This guide details how to deploy and operate the **E-Gramin Client Service Management Platform (CSMP)** on **Microsoft Azure Static Web Apps (SWA)** using **GitHub Actions**.
 
 ---
 
 ## 📑 Table of Contents
 
-1. [Production Architecture Overview](#1-production-architecture-overview)
-2. [Environment Variables Reference](#2-environment-variables-reference)
-3. [Deep-Dive Supabase Cloud Setup](#3-deep-dive-supabase-cloud-setup)
-   - [3.1 Create Project & Region Selection](#31-create-project--region-selection)
-   - [3.2 Provision Schema & Seed Database](#32-provision-schema--seed-database)
-   - [3.3 Production Connection Pooling (Supavisor)](#33-production-connection-pooling-supavisor)
-   - [3.4 Supabase Authentication & Custom SMTP Setup](#34-supabase-authentication--custom-smtp-setup)
-   - [3.5 Enable Realtime Replication](#35-enable-realtime-replication)
-   - [3.6 Storage Buckets & Attachment Policies](#36-storage-buckets--attachment-policies)
-   - [3.7 Database Backups & PITR](#37-database-backups--pitr)
-4. [GitHub Pages Deployment Master Guide](#4-github-pages-deployment-master-guide)
-   - [Method 1: Automated GitHub Actions (Recommended)](#method-1-automated-github-actions-recommended)
-   - [Method 2: 1-Command CLI Deployment (gh-pages)](#method-2-1-command-cli-deployment-gh-pages)
-   - [Supabase Cloud Configuration for GitHub Pages](#supabase-cloud-configuration-for-github-pages)
-5. [Azure Deployment Master Guide](#5-azure-deployment-master-guide)
-   - [Method 1: Azure Static Web Apps (Recommended for Azure)](#method-1-azure-static-web-apps-recommended-for-azure)
-   - [Method 2: Azure App Service (Linux Web App)](#method-2-azure-app-service-linux-web-app)
-   - [Method 3: Azure Container Apps (ACA) & Container Registry (ACR)](#method-3-azure-container-apps-aca--container-registry-acr)
-   - [Method 4: Azure Blob Storage + Azure Front Door CDN](#method-4-azure-blob-storage--azure-front-door-cdn)
-6. [Other Production Hosting Targets](#6-other-production-hosting-targets)
-   - [Option A: Vercel](#option-a-vercel)
-   - [Option B: Netlify](#option-b-netlify)
-   - [Option C: Docker & Nginx Self-Hosted](#option-c-docker--nginx-self-hosted)
-   - [Option D: AWS S3 + CloudFront](#option-d-aws-s3--cloudfront)
-   - [Option E: Cloudflare Pages](#option-e-cloudflare-pages)
-7. [SPA Routing & Rewrite Rules Matrix](#7-spa-routing--rewrite-rules-matrix)
+1. [Architecture Overview](#1-architecture-overview)
+2. [Prerequisites & Resources](#2-prerequisites--resources)
+3. [Environment Variables & Secrets](#3-environment-variables--secrets)
+4. [GitHub Actions CI/CD Pipeline](#4-github-actions-cicd-pipeline)
+5. [Azure SWA Configuration (staticwebapp.config.json)](#5-azure-swa-configuration-staticwebappconfigjson)
+6. [Supabase Cloud Production Setup](#6-supabase-cloud-production-setup)
+7. [Custom Domains & SSL Certificates](#7-custom-domains--ssl-certificates)
 8. [Post-Deployment Verification & Health Checks](#8-post-deployment-verification--health-checks)
-9. [Security & Production Readiness Checklist](#9-security--production-readiness-checklist)
+9. [Troubleshooting & Common Issues](#9-troubleshooting--common-issues)
 
 ---
 
-## 1. Production Architecture Overview
+## 1. Architecture Overview
 
-The platform uses a decoupled, cloud-native architecture:
-- **Frontend Layer**: Client-side Single Page Application (SPA) built with React 19, TypeScript, and Vite, served via global CDN edges with HTTPS/TLS 1.3 and immutable asset caching.
-- **Backend & Database Layer**: Managed **Supabase Cloud** (Enterprise PostgreSQL, Supabase Auth service, Realtime WebSocket replication, and S3-compatible Object Storage).
-- **Resilience Layer**: LocalStorage fallback caching engine ensuring zero-downtime offline functionality during network blips.
+The production architecture leverages a decoupled cloud-native stack:
 
 ```text
-                           [ Users / Clients / Staff ]
-                                        │
-                                        │ (HTTPS / TLS 1.3)
-                                        ▼
-                     ┌──────────────────────────────────────┐
-                     │    Global Edge CDN & Ingress         │
-                     │  (Azure SWA / Front Door / Vercel)   │
-                     └──────────────────┬───────────────────┘
-                                        │
-                         ┌──────────────┴──────────────┐
-                         ▼                             ▼
-                 [ Static SPA Assets ]         [ API / WebSocket ]
-                 (HTML / CSS / JS / Assets)            │
-                                                       ▼
-                                             [ Supabase Cloud ]
-                                        ┌──────────────────────────────┐
-                                        │ ├── PostgreSQL 15+ (Tables)  │
-                                        │ ├── Supabase Auth (JWT / OTP)│
-                                        │ ├── Supavisor (Conn Pooler)  │
-                                        │ ├── Realtime CDC (WebSockets)│
-                                        │ └── Storage (Attachments)    │
-                                        └──────────────────────────────┘
+       [ Users / Kiosk CSPs / Admins ]
+                      │
+                      │ (HTTPS / TLS 1.3)
+                      ▼
+    ┌───────────────────────────────────┐
+    │     Azure Static Web Apps         │
+    │  - Global Edge CDN Ingress        │
+    │  - Immutable Asset Caching        │
+    │  - SPA HTML5 Navigation Fallback  │
+    │  - Security & CSP Headers         │
+    └─────────────────┬─────────────────┘
+                      │
+        ┌─────────────┴─────────────┐
+        ▼                           ▼
+[ Static Assets / SPA ]     [ Database / Auth ]
+(React 19 + Vite Dist)              │
+                                    ▼
+                         ┌───────────────────────┐
+                         │    Supabase Cloud     │
+                         │ - PostgreSQL 15+      │
+                         │ - Supabase Auth (JWT) │
+                         │ - Realtime CDC engine │
+                         │ - S3-compatible files │
+                         └───────────────────────┘
 ```
 
 ---
 
-## 2. Environment Variables Reference
+## 2. Prerequisites & Resources
 
-Configure these variables in your hosting platform (Azure App Settings, Vercel/Netlify Environment Variables, or Docker `.env`):
+To deploy this application, you will need:
+1. An active **Azure Subscription** ([portal.azure.com](https://portal.azure.com)).
+2. An **Azure Static Web App** resource created in your resource group.
+3. A **GitHub Repository** with admin permissions to configure Repository Secrets.
+4. A **Supabase Cloud Project** ([supabase.com](https://supabase.com)).
 
-| Variable | Required | Description | Example |
+---
+
+## 3. Environment Variables & Secrets
+
+Configure the following secrets in **GitHub > Repository Settings > Secrets and variables > Actions**:
+
+| Secret Name | Required | Description | Example |
 | :--- | :---: | :--- | :--- |
-| `VITE_SUPABASE_URL` | **Yes** | Public REST/GraphQL endpoint of your Supabase project | `https://xyzproject.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | **Yes** | Public Anonymous API key for client-side Auth & queries | `eyJhbGciOi...` |
-| `DATABASE_URL` | Migrations Only | Direct/Pooled PostgreSQL connection string for migrations | `postgresql://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:6543/postgres` |
-| `SUPABASE_SERVICE_ROLE_KEY` | Backend Only | Secret master key for elevated administration tasks (DO NOT expose in client) | `eyJhbGciOi...` |
-| `GEMINI_API_KEY` | Optional | API key for optional AI assistance features | `AIzaSy...` |
-| `APP_URL` | Optional | Production canonical URL | `https://servicecore.yourcompany.com` |
-
----
-
-## 3. Deep-Dive Supabase Cloud Setup
-
-### 3.1 Create Project & Region Selection
-1. Navigate to the [Supabase Cloud Dashboard](https://supabase.com/dashboard) and sign in.
-2. Click **New Project** and configure:
-   - **Name**: `servicecore-csmp-prod`
-   - **Database Password**: Generate and securely store a 20+ character password in your secrets manager (e.g. Azure Key Vault / 1Password).
-   - **Region**: Choose a region close to your primary enterprise users (e.g., `East US (Virginia)`, `West Europe (Frankfurt)`, `Southeast Asia (Singapore)`).
-   - **Pricing Plan**: Free (for staging) or Pro/Enterprise (for production automated backups & SLA).
-3. Once provisioned, navigate to **Project Settings > API** and copy:
-   - **Project URL** (`https://[project-ref].supabase.co`) -> `VITE_SUPABASE_URL`
-   - **Project API Anon Key** (`eyJ...`) -> `VITE_SUPABASE_ANON_KEY`
-
----
-
-### 3.2 Provision Schema & Seed Database
-The complete schema definition, table indexes, default permissions, and seed personas are contained in [`supabase/schema.sql`](./supabase/schema.sql).
-
-#### Method A: Run via Supabase Web SQL Editor (Recommended)
-1. In the Supabase Dashboard left menu, click **SQL Editor**.
-2. Click **New Query**.
-3. Copy the contents of [`supabase/schema.sql`](./supabase/schema.sql) and paste it into the editor.
-4. Click **Run**.
-5. Verify in the **Table Editor** that the following tables are populated:
-   - `csmp_users` (Platform accounts, roles, company details, holding account balances)
-   - `csmp_requests` (Support tickets, wire/SEPA deposit requests, and withdrawal orders)
-   - `csmp_role_permissions` (Role access rules for admin, operator, client)
-   - `csmp_notifications` (Real-time user alerts)
-   - `csmp_audit_logs` (Audit trails)
-
-#### Method B: Automated CLI Migration Runner
-Set your production connection string and run:
-```bash
-export DATABASE_URL="postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres"
-npm run db:migrate
-```
-
----
-
-### 3.3 Production Connection Pooling (Supavisor)
-For high-concurrency production deployments:
-1. Go to **Project Settings > Database > Connection Pooling Configuration**.
-2. **Pool Mode**: Select `Transaction` for standard stateless queries.
-3. Use the **Connection String (Port 6543)** for application migrations and serverless connections to prevent database connection exhaustion.
-
----
-
-### 3.4 Supabase Authentication & Custom SMTP Setup
-
-#### 1. Site URL & Redirect Whitelisting
-1. In the Supabase Dashboard, go to **Authentication > URL Configuration**.
-2. Set **Site URL** to your primary domain (e.g., `https://servicecore.yourcompany.com` or your `*.azurestaticapps.net` URL).
-3. Under **Redirect URLs**, add:
-   - `https://servicecore.yourcompany.com/**`
-   - `https://servicecore.yourcompany.com`
-   - `http://localhost:3000` (for local development)
-
-#### 2. Configure Production SMTP Provider
-By default, Supabase sends up to 30 emails/hour on shared IPs. For enterprise production, configure custom SMTP:
-1. Go to **Authentication > SMTP Settings**.
-2. Toggle **Enable Custom SMTP**.
-3. Fill in credentials from your enterprise mail provider (SendGrid, AWS SES, Resend, or Postmark):
-   - **Sender Email**: `support@yourcompany.com`
-   - **Sender Name**: `ServiceCore Platform`
-   - **Host**: `smtp.sendgrid.net` (or `smtp.resend.com`)
-   - **Port**: `587`
-   - **User**: `apikey` (or username)
-   - **Password**: `[Your-API-Key]`
-4. Click **Save**.
-
-#### 3. Custom Email Templates
-Under **Authentication > Email Templates**, customize:
-- **Confirm Signup**: Welcome email with activation link.
-- **Magic Link**: One-time secure passwordless sign-in token.
-- **Reset Password**: Password recovery link.
-
----
-
-### 3.5 Enable Realtime Replication
-To enable live UI updates when operators or clients update tickets:
-1. In Supabase Dashboard, go to **Database > Replication**.
-2. Under **supabase_realtime** publication, ensure the following tables are enabled:
-   - `csmp_requests` (Live ticket comments, status transitions)
-   - `csmp_notifications` (Instant push notification badges)
-   - `csmp_audit_logs` (Live compliance stream)
-
----
-
-### 3.6 Storage Buckets & Attachment Policies
-1. Go to **Storage > New Bucket**.
-2. Create a bucket named `csmp-attachments`.
-3. Set bucket to **Private** (or Public for avatar CDN).
-4. Add RLS policy:
-   ```sql
-   -- Allow authenticated users to upload attachments
-   CREATE POLICY "Authenticated users can upload attachments"
-   ON storage.objects FOR INSERT
-   WITH CHECK (auth.role() = 'authenticated');
-
-   -- Allow users to read attachments
-   CREATE POLICY "Authenticated users can view attachments"
-   ON storage.objects FOR SELECT
-   USING (auth.role() = 'authenticated');
-   ```
-
----
-
-### 3.7 Database Backups & PITR
-- On Supabase Pro/Enterprise, daily automated backups are enabled by default.
-- For financial holding operations, navigate to **Project Settings > Database > Point in time recovery** and enable **PITR** (up to 7–28 days recovery).
-
----
-
-## 4. GitHub Pages Deployment Master Guide
-
-GitHub Pages is a fast, zero-cost static hosting solution directly integrated into your GitHub repository. The application is pre-configured with `base: './'` in `vite.config.ts` and an automated SPA routing fallback [`public/404.html`](./public/404.html).
-
----
-
-### Method 1: Automated GitHub Actions (Recommended)
-
-The repository includes a ready-to-use GitHub Actions workflow in [`.github/workflows/deploy.yml`](./.github/workflows/deploy.yml) that builds and deploys the app on every push to `main`.
-
-#### Step 1: Configure Repository Secrets
-1. Navigate to your repository on GitHub.
-2. Go to **Settings > Secrets and variables > Actions**.
-3. Click **New repository secret** and add:
-   - `VITE_SUPABASE_URL`: Your Supabase Cloud project URL (e.g. `https://xyzproject.supabase.co`)
-   - `VITE_SUPABASE_ANON_KEY`: Your Supabase Cloud Anon key (`eyJ...`)
-   - `GEMINI_API_KEY`: *(Optional)* Your Gemini AI key
-
-#### Step 2: Enable GitHub Pages in Repository Settings
-1. In your GitHub repository, navigate to **Settings > Pages** (in the left sidebar).
-2. Under **Build and deployment > Source**, select **GitHub Actions** from the dropdown.
-
-#### Step 3: Trigger Deployment
-1. Push any commit to your `main` branch (or go to the **Actions** tab, select **Deploy to GitHub Pages**, and click **Run workflow**).
-2. The workflow will automatically install dependencies, build the Vite app with your Supabase secrets, generate `404.html`, and deploy to GitHub Pages.
-3. Your live application will be published at:
-   ```text
-   https://<your-github-username>.github.io/<repository-name>/
-   ```
-
----
-
-### Method 2: 1-Command CLI Deployment (`gh-pages`)
-
-If you prefer deploying directly from your local terminal:
-
-1. Create a `.env.production` file (or export environment variables):
-   ```env
-   VITE_SUPABASE_URL="https://your-project.supabase.co"
-   VITE_SUPABASE_ANON_KEY="your-anon-key"
-   ```
-
-2. Run the single deployment command:
-   ```bash
-   npm run deploy
-   ```
-   *(This automatically executes `npm run build` and pushes the production `dist/` directory to the `gh-pages` branch).*
-
-3. On GitHub, go to **Settings > Pages**, choose **Deploy from a branch > `gh-pages` > `/ (root)`**, and click **Save**.
-
----
-
-### Supabase Cloud Configuration for GitHub Pages
-
-To ensure authentication and real-time features work seamlessly on GitHub Pages:
-
-1. Open your [Supabase Cloud Dashboard](https://supabase.com/dashboard).
-2. Navigate to **Authentication > URL Configuration**.
-3. Set **Site URL** to your GitHub Pages URL:
-   ```text
-   https://<your-github-username>.github.io/<repository-name>/
-   ```
-4. Add the following entries to **Redirect URLs**:
-   - `https://<your-github-username>.github.io/<repository-name>/**`
-   - `https://<your-github-username>.github.io/<repository-name>/`
-   - `http://localhost:3000` (for local development)
-5. Click **Save**.
-
----
-
-## 5. Azure Deployment Master Guide
-
-Azure provides multiple reliable hosting options for Single Page Applications (SPAs).
-
----
-
-### Method 1: Azure Static Web Apps (Recommended for Azure)
-
-**Azure Static Web Apps (SWA)** is the optimal, cost-effective hosting choice for Vite + React applications on Azure, offering global CDN distribution, automatic GitHub Actions CI/CD, free SSL certificates, and custom domain mapping.
-
-#### Step 1: Push Repository to GitHub
-Ensure all code including [`staticwebapp.config.json`](./staticwebapp.config.json) is committed:
-```bash
-git add .
-git commit -m "Configure Azure Static Web App deployment"
-git push origin main
-```
-
-#### Step 2: Create Azure Static Web App via Azure Portal
-1. Open the [Azure Portal](https://portal.azure.com/).
-2. In the search bar, search for **Static Web Apps** and click **Create**.
-3. Fill in the **Basics** tab:
-   - **Subscription**: Your Azure Subscription
-   - **Resource Group**: Create new or select existing (e.g. `rg-servicecore-prod`)
-   - **Name**: `swa-servicecore-prod`
-   - **Plan type**: **Free** (or **Standard** for enterprise SLAs & private endpoints)
-   - **Region**: Choose closest region (e.g., `East US 2` or `West Europe`)
-   - **Deployment source**: Select **GitHub** and authorize your account.
-4. Fill in **Build Details**:
-   - **Build Presets**: Select `Custom` (or `Vite`)
-   - **App location**: `/`
-   - **Api location**: Leave empty
-   - **Output location**: `dist`
-5. Click **Review + Create**, then click **Create**.
-
-#### Step 3: Configure Environment Variables in GitHub & Azure
-1. In your GitHub Repository, go to **Settings > Secrets and variables > Actions**.
-2. Under **Repository secrets**, ensure the following secrets are added:
-   - `VITE_SUPABASE_URL`: `https://[your-project-ref].supabase.co`
-   - `VITE_SUPABASE_ANON_KEY`: `[your-supabase-anon-key]`
-   - `GEMINI_API_KEY`: *(Optional)* `[your-gemini-api-key]`
-3. In your Azure Static Web Apps GitHub Actions workflow (`.github/workflows/azure-static-web-apps-*.yml`), ensure the `env:` block passes these secrets to the `Azure/static-web-apps-deploy@v1` build step:
-   ```yaml
-   env:
-     VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-     VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-     GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-   ```
-4. *(Optional for Backend / API)* In Azure Portal, you can also set these under **Static Web App > Environment variables** for any Azure Functions backend endpoints.
-5. Push a commit or re-run the workflow to build the app with your live Supabase credentials baked in.
-
-#### Step 4: Custom Domain & Free SSL
-1. In your Static Web App, navigate to **Custom domains**.
-2. Click **+ Add > Custom domain on other DNS**.
-3. Enter your domain (e.g. `servicecore.yourcompany.com`).
-4. Add the provided CNAME record in your DNS provider (Cloudflare, GoDaddy, Azure DNS).
-5. Azure automatically issues and auto-renews a free TLS/SSL certificate.
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_FOREST_025553500` | **Yes (UAT)** | Deployment deployment token for the UAT Azure SWA instance | `abc123token...` |
+| `AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_OCEAN_0DF4CC600` | **Yes (Prod)** | Deployment token for the Production Azure SWA instance | `def456token...` |
+| `VITE_SUPABASE_URL` | **Yes** | HTTPS endpoint of your Supabase project | `https://xyz.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | **Yes** | Public Anonymous API Key for browser Auth & queries | `eyJhbGciOi...` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Optional | Alias for `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOi...` |
 
 > [!NOTE]
-> The included [`staticwebapp.config.json`](./staticwebapp.config.json) file automatically configures fallback routing to `/index.html`, asset cache headers, and strict security headers (`X-Frame-Options`, `X-Content-Type-Options`).
+> Vite embeds variables prefixed with `VITE_` into client bundles at build time. Never place secret service role keys in `VITE_` variables.
 
 ---
 
-### Method 2: Azure App Service (Linux Web App)
+## 4. GitHub Actions CI/CD Pipeline
 
-For enterprise scenarios requiring deployment within Azure Virtual Networks (VNet) or dedicated App Service Plans:
+The CI/CD workflow is located at [`.github/workflows/azure-static-web-apps.yml`](file:///.github/workflows/azure-static-web-apps.yml).
 
-#### Step 1: Deploy using Azure CLI
-```bash
-# 1. Login to Azure
-az login
+### Workflow Triggers:
+- **`push` to `uat` branch**: Builds and deploys directly to the UAT environment.
+- **`push` to `prod` branch**: Builds and deploys to the Production environment.
+- **`pull_request` against `prod`**: Deploys a staging preview environment, and destroys it when the PR is merged or closed.
 
-# 2. Create Resource Group
-az group create --name rg-servicecore-prod --location eastus
-
-# 3. Create Linux App Service Plan
-az appservice plan create \
-  --name plan-servicecore \
-  --resource-group rg-servicecore-prod \
-  --sku B1 \
-  --is-linux
-
-# 4. Create Web App with Node 20 runtime
-az webapp create \
-  --resource-group rg-servicecore-prod \
-  --plan plan-servicecore \
-  --name app-servicecore-prod \
-  --runtime "NODE:20-lts"
-```
-
-#### Step 2: Configure Environment Variables
-```bash
-az webapp config appsettings set \
-  --resource-group rg-servicecore-prod \
-  --name app-servicecore-prod \
-  --settings \
-    VITE_SUPABASE_URL="https://[your-project-ref].supabase.co" \
-    VITE_SUPABASE_ANON_KEY="[your-anon-key]" \
-    NODE_ENV="production"
-```
-
-#### Step 3: Deploy Build Artifacts
-```bash
-# Build locally
-npm run build
-
-# Deploy dist folder
-az webapp deploy \
-  --resource-group rg-servicecore-prod \
-  --name app-servicecore-prod \
-  --src-path dist \
-  --type static
+### Key Deployment Step:
+```yaml
+      - name: Build And Deploy
+        id: builddeploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ github.ref == 'refs/heads/uat' && secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_POLITE_FOREST_025553500 || secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_NICE_OCEAN_0DF4CC600 }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "/"
+          api_location: ""
+          output_location: "dist"
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || secrets.VITE_SUPABASE_ANON_KEY }}
 ```
 
 ---
 
-### Method 3: Azure Container Apps (ACA) & Container Registry (ACR)
+## 5. Azure SWA Configuration (`staticwebapp.config.json`)
 
-For containerized microservices or Kubernetes deployments:
+Azure Static Web Apps reads [`staticwebapp.config.json`](file:///staticwebapp.config.json) at the root of the repository:
 
-#### Step 1: Create Azure Container Registry (ACR)
-```bash
-az acr create \
-  --resource-group rg-servicecore-prod \
-  --name acrservicecoreprod \
-  --sku Basic \
-  --admin-enabled true
+```json
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/assets/*",
+      "/*.{png,jpg,jpeg,gif,svg,ico,json,css,js,webp}"
+    ]
+  },
+  "routes": [
+    {
+      "route": "/assets/*",
+      "headers": {
+        "cache-control": "public, max-age=31536000, immutable"
+      }
+    }
+  ],
+  "globalHeaders": {
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://images.unsplash.com https://*.supabase.co https://api.dicebear.com; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://generativelanguage.googleapis.com; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+  },
+  "mimeTypes": {
+    ".json": "text/json"
+  },
+  "responseOverrides": {
+    "404": {
+      "rewrite": "/index.html",
+      "statusCode": 200
+    }
+  }
+}
 ```
 
-#### Step 2: Build and Push Docker Image
-```bash
-# Build container image using the included Dockerfile
-az acr build \
-  --registry acrservicecoreprod \
-  --image servicecore-csmp:v1.0 .
-```
-
-#### Step 3: Deploy to Azure Container Apps
-```bash
-# Create ACA Environment
-az containerapp env create \
-  --name env-servicecore \
-  --resource-group rg-servicecore-prod \
-  --location eastus
-
-# Deploy Container App
-az containerapp create \
-  --name csmp-web \
-  --resource-group rg-servicecore-prod \
-  --environment env-servicecore \
-  --image acrservicecoreprod.azurecr.io/servicecore-csmp:v1.0 \
-  --target-port 80 \
-  --ingress external \
-  --query properties.configuration.ingress.fqdn
-```
+### Why this is critical:
+- **`navigationFallback`**: Essential for Single Page Applications. Ensures routes like `/dashboard`, `/support`, and `/holding` rewrite to `/index.html` on browser refresh without returning 404s.
+- **`immutable` asset caching**: Hashed Vite bundles in `/assets/*` are cached at the edge for 1 year (`31536000s`).
+- **Security Headers**: HSTS, X-Frame-Options (blocks clickjacking), nosniff, and strict CSP preventing cross-site scripting (XSS).
 
 ---
 
-### Method 4: Azure Blob Storage + Azure Front Door CDN
+## 6. Supabase Cloud Production Setup
 
-For high-throughput, low-cost static hosting on Azure:
-
-1. **Create Storage Account & Enable Static Website**:
-   ```bash
-   az storage account create \
-     --name stservicecoreprod \
-     --resource-group rg-servicecore-prod \
-     --location eastus \
-     --sku Standard_ZRS
-
-   az storage blob service-properties update \
-     --account-name stservicecoreprod \
-     --static-website \
-     --index-document index.html \
-     --404-document index.html
-   ```
-
-2. **Upload Build Files**:
-   ```bash
-   npm run build
-   az storage blob upload-batch \
-     --account-name stservicecoreprod \
-     --source dist \
-     --destination '$web' \
-     --overwrite
-   ```
-
-3. **Attach Azure Front Door CDN**:
-   - Create an **Azure Front Door Standard/Premium** profile.
-   - Set endpoint origin to the Storage `$web` hostname.
-   - Configure a URL Rewrite rule to redirect missing routes to `/index.html`.
+1. **Authentication Configuration**:
+   - In **Supabase Dashboard > Authentication > URL Configuration**:
+     - Set **Site URL** to your Azure custom domain (e.g. `https://egramin.in` or `https://<app>.azurestaticapps.net`).
+     - Add Redirect URLs: `https://<app>.azurestaticapps.net/**`, `http://localhost:3000/**`.
+2. **Storage Bucket**:
+   - Create bucket: `csmp-attachments` with public read access or signed URL policies for ticket uploads.
+3. **Database Schema & RLS**:
+   - Run `npm run db:migrate` or paste `supabase/schema.sql` into the Supabase SQL Editor.
 
 ---
 
-## 5. Other Production Hosting Targets
+## 7. Custom Domains & SSL Certificates
 
-### Option A: Vercel
-1. Import repository to [Vercel](https://vercel.com).
-2. Set Environment Variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
-3. The included [`vercel.json`](./vercel.json) handles zero-configuration SPA routing and asset caching.
-
-### Option B: Netlify
-1. Import repository to [Netlify](https://netlify.com).
-2. Set Environment Variables in Site Settings.
-3. The included [`netlify.toml`](./netlify.toml) configures build and redirect rules automatically.
-
-### Option C: Docker & Nginx Self-Hosted
-Use the included multi-stage [`Dockerfile`](./Dockerfile) and [`nginx.conf`](./nginx.conf):
-```bash
-docker build -t servicecore-csmp:latest .
-docker run -d -p 80:80 \
-  -e VITE_SUPABASE_URL="https://xyz.supabase.co" \
-  -e VITE_SUPABASE_ANON_KEY="eyJ..." \
-  --name servicecore-prod \
-  servicecore-csmp:latest
-```
-
-### Option D: AWS S3 + CloudFront
-1. `npm run build`
-2. `aws s3 sync dist/ s3://servicecore-production-bucket --delete`
-3. Create CloudFront distribution with S3 origin and Custom Error Response (404 -> 200 -> `/index.html`).
-
-### Option E: Cloudflare Pages
-1. Connect GitHub repository to **Cloudflare Pages**.
-2. Framework: `Vite`, Build: `npm run build`, Output: `dist`.
-3. Add environment variables.
+1. In the Azure Portal, open your Static Web App resource.
+2. Under **Settings**, select **Custom domains**.
+3. Click **+ Add**:
+   - For apex domains (`egramin.in`), choose **Custom domain on Azure DNS** or configure an ALIAS/ANAME record with TXT validation.
+   - For subdomains (`app.egramin.in`), add a `CNAME` pointing to your Azure default hostname.
+4. Azure automatically provisions and auto-renews a free SSL/TLS certificate.
 
 ---
 
-## 6. SPA Routing & Rewrite Rules Matrix
+## 8. Post-Deployment Verification & Health Checks
 
-To prevent `404 Not Found` errors when users refresh deep URLs, the appropriate rewrite rules are pre-configured:
+Once deployed, verify:
+- [ ] Root access: `https://<your-domain>/` loads the landing page.
+- [ ] Direct route refresh: Navigating to `https://<your-domain>/dashboard` and hitting browser refresh preserves the route without 404 errors.
+- [ ] Favicon loads cleanly: `/favicon.svg` and `/favicon.ico` return HTTP 200.
+- [ ] Static asset headers: Inspect network tab on `/assets/*.js` to verify `cache-control: public, max-age=31536000, immutable`.
+- [ ] Realtime connection: Inspect console network tab to confirm WebSocket connection to `wss://<project>.supabase.co/realtime/v1/websocket`.
 
-| Provider | Configuration File | Implementation |
+---
+
+## 9. Troubleshooting & Common Issues
+
+| Issue | Cause | Solution |
 | :--- | :--- | :--- |
-| **Azure SWA** | [`staticwebapp.config.json`](./staticwebapp.config.json) | `"navigationFallback": { "rewrite": "/index.html" }` |
-| **Vercel** | [`vercel.json`](./vercel.json) | `"rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]` |
-| **Netlify** | [`netlify.toml`](./netlify.toml) | `[[redirects]] from = "/*" to = "/index.html" status = 200` |
-| **Nginx / Docker** | [`nginx.conf`](./nginx.conf) | `try_files $uri $uri/ /index.html;` |
-
----
-
-## 7. Post-Deployment Verification & Health Checks
-
-After deploying, run through this verification checklist:
-
-1. **Supabase Connectivity**: Verify that the status indicator in the top navbar displays a green **Supabase Connected** badge.
-2. **Authentication**: Log in with administrator account `sarah.connor@servicecore.io` (`Password123!`).
-3. **User Governance**: Navigate to **User Governance & Client CRM Directory** and test the List layout, Role dropdown, and User Deletion dialog.
-4. **Ticket Submission**: Submit a new technical support ticket and verify live comment threads.
-5. **Holding Fund Operations**: Submit a $50,000 wire deposit request and approve it as Lin Chen or Sarah Connor.
-6. **Audit Trail**: Confirm that all actions are recorded in the **Audit Trail** log viewer.
-7. **Theme Persistence**: Toggle between Dark Mode and Light Mode and refresh the page to verify persistent settings.
-
----
-
-## 8. Security & Production Readiness Checklist
-
-- [x] **Enforce HTTPS / TLS 1.3**: All traffic strictly encrypted.
-- [x] **Row Level Security (RLS)**: Verified active on all Supabase tables.
-- [x] **Public Anon Key Safety**: Secret `SUPABASE_SERVICE_ROLE_KEY` is never bundled into client code.
-- [x] **Self-Deletion Guardrails**: Active logged-in users cannot delete their own administrator account.
-- [x] **HTTP Security Headers**: `X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy` enabled.
-- [x] **Asset Caching**: 1-year immutable caching on hashed static assets (`/assets/*`).
-- [x] **Automated Database Backups**: Configured in Supabase Cloud settings.
-- [x] **CORS & Domain Whitelisting**: Supabase Auth Site URL configured to match production domain.
+| **Blank white screen on route refresh** | `base` was set to relative `./` in `vite.config.ts` | Verify `base: '/'` is set in `vite.config.ts`. |
+| **Unexpected token `<` error in JS console** | Navigation fallback rewrote a missing script file to `index.html` | Ensure assets are compiled properly and excluded from fallback rewrites. |
+| **Supabase write errors / env configuration error** | GitHub Actions secrets missing or mistyped | Verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are saved in GitHub Repository Secrets. |
+| **Deprecation warning in GitHub Actions** | Outdated checkout action | Ensure workflow uses `actions/checkout@v4`. |
