@@ -31,6 +31,10 @@ export type DbAuditLog = Tables<'csmp_audit_logs'>;
 export type DbAuditLogInsert = TablesInsert<'csmp_audit_logs'>;
 export type DbAuditLogUpdate = TablesUpdate<'csmp_audit_logs'>;
 
+export type DbCspCategory = Tables<'csmp_csp_categories'>;
+export type DbCspCategoryInsert = TablesInsert<'csmp_csp_categories'>;
+export type DbCspCategoryUpdate = TablesUpdate<'csmp_csp_categories'>;
+
 // ============================================================================
 // CORE APPLICATION ROLES & VIEWS
 // ============================================================================
@@ -43,6 +47,7 @@ export type PageId =
   | 'dashboard'
   | 'support'
   | 'holding'
+  | 'commissions'
   | 'all-requests'
   | 'assignments'
   | 'clients'
@@ -63,6 +68,7 @@ export const APP_PAGE_DEFINITIONS: PageMetadata[] = [
   { id: 'dashboard', name: 'Dashboard Overview', desc: 'KPI metrics, summary cards, and launchpad shortcuts', category: 'core' },
   { id: 'support', name: 'Support Requests', desc: 'Category-filtered tickets, bug reports, and screenshot reviews', category: 'operations' },
   { id: 'holding', name: 'Limit Requests', desc: 'Deposit confirmation slips and withdrawal payout requests', category: 'operations' },
+  { id: 'commissions', name: 'Commission Reports', desc: 'CSP commission statements, 70-30 split, TDS deductions, and revenue analytics', category: 'operations' },
   { id: 'all-requests', name: 'All Service Requests', desc: 'Master directory table with multi-parameter filtering and search', category: 'operations' },
   { id: 'assignments', name: 'Assignment Management', desc: 'Workload distribution, operator assignment, and authorizer sign-off', category: 'operations' },
   { id: 'clients', name: 'User Directory (CRM)', desc: 'Client account list, holding balances, and portfolio histories', category: 'operations' },
@@ -109,6 +115,7 @@ export interface User {
   bank?: string;
   estimatedHoldingBalance?: number;
   holdingAccountId?: string;
+  category?: 'rural' | 'urban' | string;
 }
 
 // ============================================================================

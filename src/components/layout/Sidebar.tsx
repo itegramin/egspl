@@ -19,6 +19,7 @@ import {
   Globe,
   ExternalLink,
   X,
+  BadgePercent,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NavLink } from 'react-router-dom';
@@ -81,6 +82,11 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     icon: Users,
   },
   {
+    id: 'commissions',
+    label: 'Commission Reports',
+    icon: BadgePercent,
+  },
+  {
     id: 'analytics',
     label: 'Analytics',
     icon: BarChart3,
@@ -119,6 +125,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'all-requests',
     'assignments',
     'clients',
+    'commissions',
     'analytics',
     'rbac',
     'audit-logs',
@@ -131,6 +138,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'holding',
     'all-requests',
     'assignments',
+    'commissions',
     'analytics',
     'notifications',
   ],
@@ -138,6 +146,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'dashboard',
     'support',
     'holding',
+    'commissions',
     'notifications'
   ],
 };

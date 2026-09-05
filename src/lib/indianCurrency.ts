@@ -197,3 +197,29 @@ export function formatAmountInWords(
 
   return result.trim();
 }
+
+export interface FormatCurrencyOptions {
+  showSymbol?: boolean;
+  currency?: string;
+  decimals?: number;
+}
+
+/**
+ * Formats a number in the Indian numbering system with ₹ symbol (e.g. ₹ 1,50,000.00).
+ */
+export function formatIndianCurrency(
+  amount: number | string | null | undefined,
+  options: FormatCurrencyOptions = {}
+): string {
+  if (amount === undefined || amount === null || amount === '') return '₹ 0.00';
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(num)) return '₹ 0.00';
+
+  const { showSymbol = true, decimals = 2 } = options;
+  const formatted = num.toLocaleString('en-IN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+  return showSymbol ? `₹ ${formatted}` : formatted;
+}

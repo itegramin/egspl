@@ -27,6 +27,27 @@ import {
   GlobalNotice,
 } from '../types';
 import {
+  RawCommissionRecord,
+  CommissionSplitConfig,
+  TdsConfig,
+  TransactionTypeDefinition,
+  CspCategory,
+} from '../types/commission.type';
+import {
+  DEFAULT_COMMISSION_SPLIT_CONFIG,
+  DEFAULT_TDS_CONFIG,
+} from '../lib/commissionCalculator';
+import {
+  getStoredCommissionRecords,
+  getStoredSplitConfig,
+  getStoredTdsConfig,
+  getStoredTransactionTypes,
+  saveTransactionTypes,
+  getStoredCspCategories,
+  saveCspCategories,
+  DEFAULT_CSP_CATEGORIES,
+} from '../lib/storage';
+import {
   getStoredRequests,
   saveRequests,
   savePermissions,
@@ -66,6 +87,12 @@ import {
   flushPendingRequestSync,
   fetchAssignmentConfigFromSupabase,
   saveAssignmentConfigToSupabase,
+  fetchCommissionRecordsFromSupabase,
+  saveCommissionRecordsToSupabase,
+  fetchCommissionConfigsFromSupabase,
+  saveCommissionConfigToSupabase,
+  fetchCspCategoriesFromSupabase,
+  saveCspCategoryToSupabase,
 } from '../lib/supabase';
 import { ThemeConfig, getStoredTheme, applyTheme, DEFAULT_THEME } from '../lib/theme';
 import { useAuth } from './AuthContext';
@@ -230,6 +257,19 @@ interface AppContextType {
   assignmentConfig: AssignmentConfig;
   updateAssignmentConfig: (updates: Partial<AssignmentConfig>) => void;
 
+  // Commission Reporting
+  commissionRecords: RawCommissionRecord[];
+  commissionSplitConfig: CommissionSplitConfig;
+  tdsConfig: TdsConfig;
+  transactionTypes: TransactionTypeDefinition[];
+  cspCategories: CspCategory[];
+  importCommissionRecords: (records: RawCommissionRecord[]) => Promise<void>;
+  updateSplitConfig: (cfg: CommissionSplitConfig) => Promise<void>;
+  updateTdsConfig: (cfg: TdsConfig) => Promise<void>;
+  updateCspCategory: (cat: CspCategory) => Promise<void>;
+  addTransactionType: (tt: TransactionTypeDefinition) => void;
+  upsertTransactionType: (tt: TransactionTypeDefinition) => void;
+
   // Utilities
   triggerExportCSV: () => void;
   resetAllDemoData: () => void;
@@ -255,6 +295,7 @@ const VALID_PAGES: PageId[] = [
   'all-requests',
   'assignments',
   'clients',
+  'commissions',
   'analytics',
   'rbac',
   'audit-logs',
@@ -275,6 +316,11 @@ const PAGE_ALIASES: Record<string, PageId> = {
   assignments: 'assignments',
   'assignment-management': 'assignments',
   tasks: 'assignments',
+  commission: 'commissions',
+  commissions: 'commissions',
+  'commission-reports': 'commissions',
+  'commission-report': 'commissions',
+  'commission-statements': 'commissions',
   audit: 'audit-logs',
   auditlogs: 'audit-logs',
   'audit-logs': 'audit-logs',
@@ -418,6 +464,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // Commission Reporting State
+  const [commissionRecords, setCommissionRecords] = useState<RawCommissionRecord[]>(() => getStoredCommissionRecords());
+  const [commissionSplitConfig, setCommissionSplitConfig] = useState<CommissionSplitConfig>(() => getStoredSplitConfig());
+  const [tdsConfig, setTdsConfig] = useState<TdsConfig>(() => getStoredTdsConfig());
+  const [transactionTypes, setTransactionTypes] = useState<TransactionTypeDefinition[]>(() => getStoredTransactionTypes());
+  const [cspCategories, setCspCategories] = useState<CspCategory[]>(() => getStoredCspCategories());
+
   useEffect(() => {
     applyTheme(themeConfig);
   }, [themeConfig]);
@@ -497,6 +550,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbAssignmentConfig) {
           setAssignmentConfig(dbAssignmentConfig);
           saveAssignmentConfig(dbAssignmentConfig);
+        }
+
+        // Commission records and rules
+        const [dbComms, dbConfigs, dbCats] = await Promise.all([
+          fetchCommissionRecordsFromSupabase().catch(() => null),
+          fetchCommissionConfigsFromSupabase().catch(() => null),
+          fetchCspCategoriesFromSupabase().catch(() => null),
+        ]);
+        if (dbComms && dbComms.length > 0) {
+          setCommissionRecords(dbComms);
+        }
+        if (dbConfigs) {
+          if (dbConfigs.split) setCommissionSplitConfig(dbConfigs.split);
+          if (dbConfigs.tds) setTdsConfig(dbConfigs.tds);
+          if (dbConfigs.transactionTypes && dbConfigs.transactionTypes.length > 0) {
+            setTransactionTypes(dbConfigs.transactionTypes);
+          }
+        }
+        if (dbCats && dbCats.length > 0) {
+          setCspCategories(dbCats);
+        }
+
+        // Dynamic discovery of transaction types from raw records
+        if (dbComms && dbComms.length > 0) {
+          setTransactionTypes(prev => {
+            const existingMap = new Map(prev.map(t => [t.name.toLowerCase().trim(), t]));
+            let changed = false;
+            dbComms.forEach(r => {
+              const name = (r.transactionType || '').trim();
+              if (name && !existingMap.has(name.toLowerCase())) {
+                const code = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
+                const lower = name.toLowerCase();
+                let category: TransactionTypeDefinition['category'] = 'other';
+                if (lower.includes('pmjjby') || lower.includes('pmsby') || lower.includes('apy') || lower.includes('har ghar suraksha')) {
+                  category = 'social_security';
+                } else if (lower.includes('open') || lower.includes('opening') || lower.includes('ekyc')) {
+                  category = 'onboarding';
+                } else if (lower.includes('loan')) {
+                  category = 'credit';
+                } else if (
+                  lower.includes('withdrawal') || lower.includes('deposit') || lower.includes('transfer') ||
+                  lower.includes('card') || lower.includes('matm') || lower.includes('aeps') || lower.includes('atm') || lower.includes('remittance')
+                ) {
+                  category = 'banking';
+                }
+
+                existingMap.set(name.toLowerCase(), {
+                  id: `tt_${code}_${Date.now()}`,
+                  code,
+                  name,
+                  category,
+                  description: `Discovered from database: ${name}`,
+                  isActive: true,
+                });
+                changed = true;
+              }
+            });
+
+            if (changed) {
+              const merged = Array.from(existingMap.values());
+              saveTransactionTypes(merged);
+              saveCommissionConfigToSupabase('transaction_types', merged, 'System Auto-Discovery').catch(() => null);
+              return merged;
+            }
+            return prev;
+          });
         }
       }
     } catch (err: any) {
@@ -2239,7 +2358,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications([]);
     setGlobalNotices([]);
     setAuditLogs([]);
+    setCommissionRecords(getStoredCommissionRecords());
+    setCommissionSplitConfig(DEFAULT_COMMISSION_SPLIT_CONFIG);
+    setTdsConfig(DEFAULT_TDS_CONFIG);
+    setCspCategories(DEFAULT_CSP_CATEGORIES);
+    saveCspCategories(DEFAULT_CSP_CATEGORIES);
     toast('Platform reset to original demo seed dataset.', 'info');
+  };
+
+  // Commission Actions
+  const importCommissionRecords = async (newRecords: RawCommissionRecord[]) => {
+    const updated = [...newRecords, ...commissionRecords];
+    setCommissionRecords(updated);
+    await saveCommissionRecordsToSupabase(updated);
+    recordAudit('IMPORTED_COMMISSION_BATCH', 'system', `batch_${Date.now()}`, `Imported ${newRecords.length} raw commission transaction records.`);
+    toast(`Successfully imported ${newRecords.length} transaction records!`, 'success');
+  };
+
+  const updateSplitConfig = async (cfg: CommissionSplitConfig) => {
+    setCommissionSplitConfig(cfg);
+    await saveCommissionConfigToSupabase('split', cfg, user?.name || 'Admin');
+    recordAudit('UPDATED_COMMISSION_SPLIT', 'system', cfg.id, `Updated split ratio to ${cfg.defaultCspPercent}-${cfg.defaultCorporatePercent}.`);
+    toast('Commission split rules updated successfully.', 'success');
+  };
+
+  const updateTdsConfig = async (cfg: TdsConfig) => {
+    setTdsConfig(cfg);
+    await saveCommissionConfigToSupabase('tds', cfg, user?.name || 'Admin');
+    recordAudit('UPDATED_TDS_CONFIG', 'system', 'tds_config', `Updated TDS rate to ${cfg.currentRate}% (Section ${cfg.section}).`);
+    toast(`TDS rate updated to ${cfg.currentRate}%.`, 'success');
+  };
+
+  const updateCspCategory = async (cat: CspCategory) => {
+    setCspCategories((prev) => {
+      const next = prev.map((c) => (c.id === cat.id || c.code === cat.code ? cat : c));
+      saveCspCategories(next);
+      return next;
+    });
+    await saveCspCategoryToSupabase(cat);
+    recordAudit(
+      'UPDATED_CSP_CATEGORY',
+      'system',
+      cat.id,
+      `Updated ${cat.name} category share to ${cat.cspSharePercent}-${cat.corporateSharePercent}.`
+    );
+    toast(`CSP Category "${cat.name}" updated successfully!`, 'success');
+  };
+
+  const upsertTransactionType = (tt: TransactionTypeDefinition) => {
+    setTransactionTypes(prev => {
+      const idx = prev.findIndex(
+        t => t.id === tt.id || t.code.toLowerCase() === tt.code.toLowerCase() || t.name.toLowerCase() === tt.name.toLowerCase()
+      );
+      let next: TransactionTypeDefinition[];
+      if (idx >= 0) {
+        next = [...prev];
+        next[idx] = { ...next[idx], ...tt };
+      } else {
+        next = [...prev, tt];
+      }
+      saveTransactionTypes(next);
+      saveCommissionConfigToSupabase('transaction_types', next, user?.name || 'Admin').catch(() => null);
+      return next;
+    });
+    toast(`Transaction type "${tt.name}" saved.`, 'success');
+  };
+
+  const addTransactionType = (tt: TransactionTypeDefinition) => {
+    upsertTransactionType(tt);
   };
 
   return (
@@ -2314,6 +2500,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         syncWithSupabase,
         assignmentConfig,
         updateAssignmentConfig,
+        commissionRecords,
+        commissionSplitConfig,
+        tdsConfig,
+        cspCategories,
+        transactionTypes,
+        importCommissionRecords,
+        updateSplitConfig,
+        updateTdsConfig,
+        updateCspCategory,
+        addTransactionType,
+        upsertTransactionType,
         triggerExportCSV,
         resetAllDemoData,
         toast,

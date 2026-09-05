@@ -11,6 +11,17 @@ import {
   getRuleAuthorizers,
   GlobalNotice,
 } from '../types';
+import {
+  RawCommissionRecord,
+  CommissionSplitConfig,
+  TdsConfig,
+  TransactionTypeDefinition,
+  CspCategory,
+} from '../types/commission.type';
+import {
+  DEFAULT_COMMISSION_SPLIT_CONFIG,
+  DEFAULT_TDS_CONFIG,
+} from './commissionCalculator';
 import { formatDateTimeIST } from './dateUtils';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +37,11 @@ const PERMISSIONS_KEY = 'csmp_permissions_v1';
 const NOTIFICATIONS_KEY = 'csmp_notifications_v1';
 const ASSIGNMENT_CONFIG_KEY = 'csmp_assignment_config_v1';
 const GLOBAL_NOTICES_KEY = 'csmp_global_notices_v1';
+const COMMISSION_RECORDS_KEY = 'csmp_commission_records_v1';
+const COMMISSION_SPLIT_KEY = 'csmp_commission_split_v1';
+const COMMISSION_TDS_KEY = 'csmp_commission_tds_v1';
+const COMMISSION_TRANSACTION_TYPES_KEY = 'csmp_commission_transaction_types_v1';
+const CSP_CATEGORIES_KEY = 'csmp_csp_categories_v1';
 
 // Audit logs are NOT stored in localStorage — they are fetched exclusively
 // from Supabase to prevent tampering and PII leakage.
@@ -37,7 +53,7 @@ const GLOBAL_NOTICES_KEY = 'csmp_global_notices_v1';
 // ─────────────────────────────────────────────────────────────────────────────
 type SafeUserCache = Pick<
   User,
-  'id' | 'role' | 'status' | 'companyName' | 'avatarUrl' | 'currency' | 'estimatedHoldingBalance' | 'createdAt'
+  'id' | 'role' | 'status' | 'companyName' | 'avatarUrl' | 'currency' | 'estimatedHoldingBalance' | 'createdAt' | 'kioskId' | 'category'
 >;
 
 function stripPii(user: User): SafeUserCache {
@@ -50,13 +66,15 @@ function stripPii(user: User): SafeUserCache {
     currency: user.currency,
     estimatedHoldingBalance: user.estimatedHoldingBalance,
     createdAt: user.createdAt,
+    kioskId: user.kioskId,
+    category: user.category,
   };
 }
 
 export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: {
     role: 'admin',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -68,7 +86,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   operator: {
     role: 'operator',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'notifications'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'notifications'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -80,14 +98,14 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   client: {
     role: 'client',
-    allowedPages: ['dashboard', 'support', 'holding', 'notifications'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'notifications'],
     canCreateRequest: true,
     canChangeStatus: false,
     canAssignOperator: false,
     canAddInternalNotes: false,
     canViewAllClients: false,
     canManageRoles: false,
-    canExportReports: false,
+    canExportReports: true,
     canViewAuditLogs: false,
   },
 };
@@ -352,34 +370,172 @@ export function exportRequestsToCSV(requests: ServiceRequest[], filename = 'clie
 // Demo / Reset
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Commission Reporting Storage
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getStoredCommissionRecords(): RawCommissionRecord[] {
+  try {
+    const raw = localStorage.getItem(COMMISSION_RECORDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((r: any) => {
+      const parts = (r.period || '').trim().split(' ');
+      return {
+        ...r,
+        month: r.month || parts[0] || undefined,
+        year:
+          r.year != null
+            ? Number(r.year)
+            : parts[1] && !isNaN(Number(parts[1]))
+            ? Number(parts[1])
+            : undefined,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function saveCommissionRecords(records: RawCommissionRecord[]): void {
+  try {
+    // Cap local storage cache to latest 500 records to prevent browser quota exhaustion
+    const toCache = records.length > 500 ? records.slice(0, 500) : records;
+    localStorage.setItem(COMMISSION_RECORDS_KEY, JSON.stringify(toCache));
+  } catch (err) {
+    console.warn('Could not save commission records to localStorage:', err);
+  }
+}
+
+export function getStoredSplitConfig(): CommissionSplitConfig {
+  try {
+    const raw = localStorage.getItem(COMMISSION_SPLIT_KEY);
+    if (!raw) {
+      saveSplitConfig(DEFAULT_COMMISSION_SPLIT_CONFIG);
+      return DEFAULT_COMMISSION_SPLIT_CONFIG;
+    }
+    return JSON.parse(raw) || DEFAULT_COMMISSION_SPLIT_CONFIG;
+  } catch {
+    return DEFAULT_COMMISSION_SPLIT_CONFIG;
+  }
+}
+
+export function saveSplitConfig(cfg: CommissionSplitConfig): void {
+  try {
+    localStorage.setItem(COMMISSION_SPLIT_KEY, JSON.stringify(cfg));
+  } catch (err) {
+    console.warn('Could not save split config to localStorage:', err);
+  }
+}
+
+export function getStoredTdsConfig(): TdsConfig {
+  try {
+    const raw = localStorage.getItem(COMMISSION_TDS_KEY);
+    if (!raw) {
+      saveTdsConfig(DEFAULT_TDS_CONFIG);
+      return DEFAULT_TDS_CONFIG;
+    }
+    return JSON.parse(raw) || DEFAULT_TDS_CONFIG;
+  } catch {
+    return DEFAULT_TDS_CONFIG;
+  }
+}
+
+export function saveTdsConfig(cfg: TdsConfig): void {
+  try {
+    localStorage.setItem(COMMISSION_TDS_KEY, JSON.stringify(cfg));
+  } catch (err) {
+    console.warn('Could not save TDS config to localStorage:', err);
+  }
+}
+
+export function getStoredTransactionTypes(): TransactionTypeDefinition[] {
+  try {
+    const raw = localStorage.getItem(COMMISSION_TRANSACTION_TYPES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveTransactionTypes(types: TransactionTypeDefinition[]): void {
+  try {
+    localStorage.setItem(COMMISSION_TRANSACTION_TYPES_KEY, JSON.stringify(types));
+  } catch (err) {
+    console.warn('Could not save transaction types to localStorage:', err);
+  }
+}
+
+export const DEFAULT_CSP_CATEGORIES: CspCategory[] = [
+  {
+    id: 'cat_rural',
+    code: 'rural',
+    name: 'Rural',
+    description: 'Rural area Customer Service Points (75% base CSP share)',
+    cspSharePercent: 75,
+    corporateSharePercent: 25,
+    isActive: true,
+  },
+  {
+    id: 'cat_urban',
+    code: 'urban',
+    name: 'Urban',
+    description: 'Urban and Metro Customer Service Points (70% base CSP share)',
+    cspSharePercent: 70,
+    corporateSharePercent: 30,
+    isActive: true,
+  },
+];
+
+export function getStoredCspCategories(): CspCategory[] {
+  try {
+    const raw = localStorage.getItem(CSP_CATEGORIES_KEY);
+    if (!raw) {
+      saveCspCategories(DEFAULT_CSP_CATEGORIES);
+      return DEFAULT_CSP_CATEGORIES;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_CSP_CATEGORIES;
+  } catch {
+    return DEFAULT_CSP_CATEGORIES;
+  }
+}
+
+export function saveCspCategories(cats: CspCategory[]): void {
+  try {
+    localStorage.setItem(CSP_CATEGORIES_KEY, JSON.stringify(cats));
+  } catch (err) {
+    console.warn('Could not save CSP categories to localStorage:', err);
+  }
+}
+
 export function resetToDemoData(): void {
   localStorage.removeItem(USERS_KEY);
   localStorage.removeItem(REQUESTS_KEY);
   localStorage.removeItem(NOTIFICATIONS_KEY);
   localStorage.removeItem(PERMISSIONS_KEY);
   localStorage.removeItem(GLOBAL_NOTICES_KEY);
+  localStorage.removeItem(COMMISSION_RECORDS_KEY);
+  localStorage.removeItem(COMMISSION_SPLIT_KEY);
+  localStorage.removeItem(COMMISSION_TDS_KEY);
+  localStorage.removeItem(COMMISSION_TRANSACTION_TYPES_KEY);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Session Cleanup
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Wipes all sensitive data from localStorage on sign-out.
- * Call this whenever a session ends to prevent data leaking to
- * the next person who opens the browser.
- */
 export function clearSensitiveStorage(): void {
   localStorage.removeItem(USERS_KEY);
   localStorage.removeItem(REQUESTS_KEY);
   localStorage.removeItem(NOTIFICATIONS_KEY);
   localStorage.removeItem(PERMISSIONS_KEY);
-  // Navigation state — cleared so the next session starts at home
   localStorage.removeItem('csmp_current_view');
   localStorage.removeItem('csmp_current_page');
-  // Legacy key guard — remove in case old versions wrote it
   localStorage.removeItem('csmp_current_user_v1');
   localStorage.removeItem('csmp_auth_session_active');
   localStorage.removeItem('csmp_audit_logs_v1');
   localStorage.removeItem(GLOBAL_NOTICES_KEY);
+  localStorage.removeItem(COMMISSION_TRANSACTION_TYPES_KEY);
 }
+
+

@@ -31,6 +31,7 @@ ALTER TABLE csmp_users ADD COLUMN IF NOT EXISTS ifsc TEXT;
 ALTER TABLE csmp_users ADD COLUMN IF NOT EXISTS bank TEXT;
 ALTER TABLE csmp_users ADD COLUMN IF NOT EXISTS kiosk_id TEXT;
 ALTER TABLE csmp_users ADD COLUMN IF NOT EXISTS estimated_holding_balance NUMERIC DEFAULT 0;
+ALTER TABLE csmp_users ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'rural';
 
 
 -- 2. SERVICE REQUESTS TABLE (Support Tickets, Deposits, Withdrawals)
@@ -574,4 +575,105 @@ CREATE POLICY "csmp-settings-write" ON csmp_settings
   FOR ALL USING (true) WITH CHECK (true);
 
 GRANT ALL ON TABLE csmp_settings TO anon, authenticated, service_role;
+
+-- -------------------------------------------------------------
+-- 7. COMMISSION REPORTING TABLES (CSP Splits, TDS & Reports)
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS csmp_commission_records (
+  id TEXT PRIMARY KEY,
+  circle TEXT NOT NULL,
+  circle_name TEXT NOT NULL,
+  bcbf_code TEXT NOT NULL,
+  csp_code TEXT NOT NULL,
+  csp_name TEXT NOT NULL,
+  transaction_type TEXT NOT NULL,
+  num_txns_or_avg_bal NUMERIC(14, 2) NOT NULL DEFAULT 0,
+  raw_commission NUMERIC(14, 2) NOT NULL DEFAULT 0,
+  period TEXT NOT NULL,
+  month TEXT,
+  year INTEGER,
+  batch_id TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_commission_records_csp ON csmp_commission_records(csp_code, period);
+CREATE INDEX IF NOT EXISTS idx_commission_records_period ON csmp_commission_records(period);
+CREATE INDEX IF NOT EXISTS idx_commission_records_year_month ON csmp_commission_records(year, month);
+CREATE INDEX IF NOT EXISTS idx_commission_records_csp_ym ON csmp_commission_records(csp_code, year, month);
+
+ALTER TABLE csmp_commission_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "csmp-commissions-read" ON csmp_commission_records;
+CREATE POLICY "csmp-commissions-read" ON csmp_commission_records
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "csmp-commissions-write" ON csmp_commission_records;
+CREATE POLICY "csmp-commissions-write" ON csmp_commission_records
+  FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON TABLE csmp_commission_records TO anon, authenticated, service_role;
+
+-- Commission Split & TDS Configuration Table
+CREATE TABLE IF NOT EXISTS csmp_commission_configs (
+  id TEXT PRIMARY KEY,
+  config_type TEXT NOT NULL, -- 'split' or 'tds'
+  config_data JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_by TEXT DEFAULT 'System Admin'
+);
+
+ALTER TABLE csmp_commission_configs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "csmp-commission-configs-read" ON csmp_commission_configs;
+CREATE POLICY "csmp-commission-configs-read" ON csmp_commission_configs
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "csmp-commission-configs-write" ON csmp_commission_configs;
+CREATE POLICY "csmp-commission-configs-write" ON csmp_commission_configs
+  FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON TABLE csmp_commission_configs TO anon, authenticated, service_role;
+
+-- CSP Categories (Rural / Urban with differentiated commission shares)
+CREATE TABLE IF NOT EXISTS csmp_csp_categories (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  description TEXT,
+  csp_share_percent NUMERIC NOT NULL DEFAULT 70,
+  corporate_share_percent NUMERIC NOT NULL DEFAULT 30,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE csmp_csp_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read access for csmp_csp_categories" ON csmp_csp_categories;
+CREATE POLICY "Public read access for csmp_csp_categories" 
+  ON csmp_csp_categories 
+  FOR SELECT 
+  USING (true);
+
+DROP POLICY IF EXISTS "Admin write access for csmp_csp_categories" ON csmp_csp_categories;
+CREATE POLICY "Admin write access for csmp_csp_categories" 
+  ON csmp_csp_categories 
+  FOR ALL 
+  USING (
+    auth.role() = 'service_role' OR
+    EXISTS (
+      SELECT 1 FROM public.csmp_users 
+      WHERE auth_user_id = auth.uid() AND role = 'admin'
+    )
+  );
+
+GRANT ALL ON TABLE csmp_csp_categories TO anon, authenticated, service_role;
+
+INSERT INTO csmp_csp_categories (id, code, name, description, csp_share_percent, corporate_share_percent, is_active)
+VALUES 
+  ('cat_rural', 'rural', 'Rural', 'Rural area Customer Service Points (75% base CSP share)', 75, 25, true),
+  ('cat_urban', 'urban', 'Urban', 'Urban and Metro Customer Service Points (70% base CSP share)', 70, 30, true)
+ON CONFLICT (code) DO NOTHING;
+
 

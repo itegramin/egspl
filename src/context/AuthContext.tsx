@@ -204,7 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // ── Step 2: Role + profile fields come from public.csmp_users (auth_user_id FK).
     let { data: dbRow, error: dbErr } = await supabase
       .from('csmp_users')
-      .select('id, auth_user_id, name, email, role, status, avatar_url, company_name, phone_number, currency, account, ifsc, bank, kiosk_id, estimated_holding_balance, created_at')
+      .select('id, auth_user_id, name, email, role, status, avatar_url, company_name, phone_number, currency, account, ifsc, bank, kiosk_id, category, estimated_holding_balance, created_at')
       .eq('auth_user_id', authUsr.id)
       .maybeSingle();
 
@@ -212,7 +212,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!dbRow && authIdentity.email) {
       const { data: emailRow } = await supabase
         .from('csmp_users')
-        .select('id, auth_user_id, name, email, role, status, avatar_url, company_name, phone_number, currency, account, ifsc, bank, kiosk_id, estimated_holding_balance, created_at')
+        .select('id, auth_user_id, name, email, role, status, avatar_url, company_name, phone_number, currency, account, ifsc, bank, kiosk_id, category, estimated_holding_balance, created_at')
         .eq('email', authIdentity.email.trim())
         .maybeSingle();
 
@@ -243,6 +243,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         phoneNumber: meta.phone_number || meta.phoneNumber,
         status: defaultStatus,
         currency: meta.currency || 'INR',
+        category: (meta.category as any) || 'rural',
         avatarUrl: meta.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${authIdentity.email}`,
         createdAt: new Date().toISOString(),
       };
@@ -279,6 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ifsc: dbRow.ifsc || '',
         bank: dbRow.bank || '',
         kioskId: dbRow.kiosk_id || '',
+        category: dbRow.category || 'rural',
         createdAt: dbRow.created_at,
       };
 
@@ -602,6 +604,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ifsc: updatedUser.ifsc,
             bank: updatedUser.bank,
             kiosk_id: updatedUser.kioskId,
+            category: updatedUser.category,
           },
         });
       }
