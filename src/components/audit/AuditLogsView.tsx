@@ -14,6 +14,7 @@ import {
   X,
   Code2
 } from 'lucide-react';
+import { DownloadModal } from '../requests/DownloadModal';
 
 export const AuditLogsView: React.FC = () => {
   const { auditLogs } = useApp();
@@ -26,6 +27,7 @@ export const AuditLogsView: React.FC = () => {
   const [targetTypeFilter, setTargetTypeFilter] = useState<string>('all');
   const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   // Extract all distinct actions present in audit logs
   const distinctActions = useMemo(() => {
@@ -170,12 +172,13 @@ export const AuditLogsView: React.FC = () => {
 
         <div className="flex items-center gap-2.5 shrink-0">
           <button
-            onClick={handleExportCSV}
-            disabled={filteredLogs.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors shadow-xs"
+            id="download-audit-logs-btn"
+            onClick={() => setIsDownloadModalOpen(true)}
+            disabled={auditLogs.length === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            <span>Export CSV</span>
+            <Download className="w-4 h-4 text-slate-400" />
+            <span>Download</span>
           </button>
         </div>
       </div>
@@ -461,6 +464,14 @@ export const AuditLogsView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Download Modal */}
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        viewType="audit"
+        data={auditLogs}
+        currentUserRole={user?.role}
+      />
     </div>
   );
 };

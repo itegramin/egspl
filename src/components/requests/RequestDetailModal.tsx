@@ -8,6 +8,9 @@ import {
   HoldingWithdrawRequest,
   RequestStatus,
   UserRole,
+  getRequestHandlers,
+  getRequestAuthorizers,
+  isUserAssignedAuthorizer,
 } from '../../types';
 import { AmountInWords } from '../common/AmountInWords';
 import { StatusBadge, PriorityBadge, TypeBadge, RoleBadge, DeletionPendingBadge } from '../common/Badge';
@@ -53,6 +56,7 @@ export const RequestDetailModal: React.FC = () => {
     approveDeletion,
     rejectDeletion,
     permissions,
+    assignmentConfig,
   } = useApp();
   const { user, operators } = useAuth();
 
@@ -100,10 +104,16 @@ export const RequestDetailModal: React.FC = () => {
   const isAuthorized = isWithdraw && (isAuthorizeDone || req.status === 'completed');
   const authorizedAmountValue = withdrawReq?.authorizedAmount || cma.authorizedAmount || withdrawReq?.amount || 0;
 
-  // Authorizer check: only the assigned authorizer (or admin) can tick 'Authorize'
+  // Authorizer check: only assigned authorizer(s) (or admin) can tick 'Authorize'
   const isAssignedAuthorizer =
     user.role === 'admin' ||
-    (req as any).assignedAuthorizerId === user.id;
+    isUserAssignedAuthorizer(req, user.id, assignmentConfig?.rules?.limit);
+
+  const assignedMakers = getRequestHandlers(
+    req,
+    assignmentConfig?.rules?.[req.type === 'withdraw' ? 'limit' : req.type]
+  );
+  const assignedAuthorizersList = getRequestAuthorizers(req, assignmentConfig?.rules?.limit);
 
   // CMA sequence guards
   const canMake = isConfigureDone;  // Must Configure first
@@ -420,14 +430,31 @@ export const RequestDetailModal: React.FC = () => {
                             {[isConfigureDone, isMakeDone, isAuthorizeDone].filter(Boolean).length}/3 Checkpoints Complete
                           </span>
                         </div>
+                        {/* Assigned Staff Info Pills */}
+                        {(assignedMakers.length > 0 || assignedAuthorizersList.length > 0) && (
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {assignedMakers.length > 0 && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                <span className="font-bold">Maker{assignedMakers.length > 1 ? 's' : ''}:</span>
+                                <span>{assignedMakers.map(m => m.name).join(', ')}</span>
+                              </div>
+                            )}
+                            {assignedAuthorizersList.length > 0 && (
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800">
+                                <span className="font-bold">Authorizer{assignedAuthorizersList.length > 1 ? 's' : ''}:</span>
+                                <span>{assignedAuthorizersList.map(a => a.name).join(', ')}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                         {!canAuthorize && !isAuthorizeDone && canChangeStatus && (
-                          <span className="text-[10px] text-violet-500 dark:text-violet-400 leading-snug">
+                          <span className="text-[10px] text-violet-500 dark:text-violet-400 leading-snug block mt-1">
                             {!isConfigureDone || !isMakeDone
                               ? 'Complete Configure → Make first'
-                              : 'Only the assigned Authorizer can authorize'}
+                              : 'Only designated Authorizer can authorize'}
                           </span>
                         )}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-2.5">
                           {/* Checkbox 1: C (Configure) */}
                           <label
                             id="cma-step-configure-card"
@@ -1047,24 +1074,62 @@ export const RequestDetailModal: React.FC = () => {
                         {req.clientCompany || 'Individual'}
                       </div>
                     </div>
-                    <div>
-                      <span className="text-slate-400">Assigned Operator</span>
+                    <div className="col-span-2 sm:col-span-3">
+                      <span className="text-slate-400">Assigned Staff</span>
                       {canAssign ? (
-                        <select
-                          value={req.assignedOperatorId || ''}
-                          onChange={(e) => assignOperator(req.id, e.target.value)}
-                          className="mt-1 w-full px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
-                        >
-                          <option value="">Unassigned</option>
-                          {operators.map((op) => (
-                            <option key={op.id} value={op.id}>
-                              {op.name} ({op.role.toUpperCase()})
-                            </option>
-                          ))}
-                        </select>
+                        <div className="mt-1 space-y-1.5">
+                          <select
+                            value={req.assignedOperatorId || ''}
+                            onChange={(e) => assignOperator(req.id, e.target.value)}
+                            className="w-full px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white font-medium"
+                          >
+                            <option value="">Unassigned</option>
+                            {operators.map((op) => (
+                              <option key={op.id} value={op.id}>
+                                {op.name} ({op.role.toUpperCase()})
+                              </option>
+                            ))}
+                          </select>
+                          {/* Show all auto-assigned handlers / authorizers */}
+                          {(assignedMakers.length > 0 || assignedAuthorizersList.length > 0) && (
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                              {assignedMakers.map(h => (
+                                <span key={h.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+                                  <span className="w-3 h-3 rounded-sm bg-indigo-600 dark:bg-indigo-500 text-white flex items-center justify-center text-[8px] font-black">H</span>
+                                  {h.name}
+                                </span>
+                              ))}
+                              {assignedAuthorizersList.map(a => (
+                                <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700">
+                                  <span className="w-3 h-3 rounded-sm bg-violet-600 dark:bg-violet-500 text-white flex items-center justify-center text-[8px] font-black">A</span>
+                                  {a.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ) : (
-                        <div className="font-semibold text-indigo-600 dark:text-indigo-400">
-                          {req.assignedOperatorName || 'Unassigned'}
+                        <div className="mt-1">
+                          {(assignedMakers.length > 0 || assignedAuthorizersList.length > 0) ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {assignedMakers.map(h => (
+                                <span key={h.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+                                  <span className="w-3 h-3 rounded-sm bg-indigo-600 dark:bg-indigo-500 text-white flex items-center justify-center text-[8px] font-black">H</span>
+                                  {h.name}
+                                </span>
+                              ))}
+                              {assignedAuthorizersList.map(a => (
+                                <span key={a.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-violet-100 dark:bg-violet-900/60 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700">
+                                  <span className="w-3 h-3 rounded-sm bg-violet-600 dark:bg-violet-500 text-white flex items-center justify-center text-[8px] font-black">A</span>
+                                  {a.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                              {req.assignedOperatorName || 'Unassigned'}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>

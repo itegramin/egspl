@@ -73,7 +73,7 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     label: 'Assignments',
     icon: UserCheck,
     badgeCount: (reqs, u) =>
-      u.role === 'client' ? 0 : reqs.filter(r => !r.assignedOperatorId && r.status === 'pending').length,
+      u.role === 'client' ? 0 : reqs.filter(r => !r.assignedOperatorId && (!r.assignedHandlers || r.assignedHandlers.length === 0) && r.status === 'pending').length,
   },
   {
     id: 'clients',

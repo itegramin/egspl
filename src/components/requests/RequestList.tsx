@@ -19,9 +19,10 @@ import {
   ChevronUp,
   ArrowDownUp,
 } from 'lucide-react';
-import { RequestType, RequestStatus, RequestPriority, HoldingWithdrawRequest } from '../../types';
+import { RequestType, RequestStatus, RequestPriority, HoldingWithdrawRequest, isUserAssignedHandler, isUserAssignedAuthorizer } from '../../types';
 import { formatShortDateIST } from '../../lib/dateUtils';
 import { exportRequestsToCSV } from '../../lib/storage';
+import { DownloadModal } from './DownloadModal';
 
 interface RequestListProps {
   title?: string;
@@ -43,6 +44,7 @@ export const RequestList: React.FC<RequestListProps> = ({
     permissions,
     syncWithSupabase,
     toast,
+    assignmentConfig,
   } = useApp();
   const { user, operators, allUsers } = useAuth();
 
@@ -55,6 +57,7 @@ export const RequestList: React.FC<RequestListProps> = ({
   const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
   const [assignedFilter, setAssignedFilter] = useState<string>(user?.role === 'operator' ? 'mine' : 'all');
   const [sortBy, setSortBy] = useState<string>('oldest_pending'); // Default: oldest on not completed request first
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const handleRefresh = async () => {
     if (isSyncing) return;
@@ -98,27 +101,38 @@ export const RequestList: React.FC<RequestListProps> = ({
       // Staff / Assigned filter
       if (user?.role === 'operator') {
         if (assignedFilter === 'mine') {
-          const isMyOp = r.assignedOperatorId === user.id;
-          const isMyAuth = r.type === 'withdraw' && (r as HoldingWithdrawRequest).assignedAuthorizerId === user.id;
+          const ruleForType = assignmentConfig.rules[r.type === 'withdraw' ? 'limit' : r.type];
+          const isMyOp = isUserAssignedHandler(r, user.id, ruleForType);
+          const isMyAuth = isUserAssignedAuthorizer(r, user.id, assignmentConfig.rules.limit);
           if (!isMyOp && !isMyAuth) return false;
         } else if (assignedFilter === 'all') {
-          const isAssigned = Boolean(r.assignedOperatorId && r.assignedOperatorId.trim() !== '');
+          const ruleForType = assignmentConfig.rules[r.type === 'withdraw' ? 'limit' : r.type];
+          const isAssigned = Boolean(
+            (r.assignedOperatorId && r.assignedOperatorId.trim() !== '') ||
+            (r.assignedHandlers && r.assignedHandlers.length > 0) ||
+            (r.type === 'withdraw' && (r as HoldingWithdrawRequest).cmaStatus?.handlers?.length) ||
+            (ruleForType && (ruleForType.handlers?.length || ruleForType.operatorId))
+          );
           const hasAuth =
             r.type === 'withdraw' &&
             Boolean(
-              (r as HoldingWithdrawRequest).assignedAuthorizerId &&
-              (r as HoldingWithdrawRequest).assignedAuthorizerId?.trim() !== ''
+              ((r as HoldingWithdrawRequest).assignedAuthorizerId &&
+                (r as HoldingWithdrawRequest).assignedAuthorizerId?.trim() !== '') ||
+              ((r as HoldingWithdrawRequest).assignedAuthorizers &&
+                (r as HoldingWithdrawRequest).assignedAuthorizers!.length > 0) ||
+              ((r as HoldingWithdrawRequest).cmaStatus?.authorizers?.length) ||
+              (assignmentConfig.rules.limit &&
+                (assignmentConfig.rules.limit.authorizers?.length || assignmentConfig.rules.limit.authorizerId))
             );
           if (!isAssigned && !hasAuth) return false;
         }
       } else if (user?.role === 'admin') {
         if (assignedFilter === 'unassigned') {
-          if (r.assignedOperatorId) return false;
+          if (r.assignedOperatorId || (r.assignedHandlers && r.assignedHandlers.length > 0)) return false;
         } else if (assignedFilter !== 'all') {
-          const isSelectedOp = r.assignedOperatorId === assignedFilter;
-          const isSelectedAuth =
-            r.type === 'withdraw' &&
-            (r as HoldingWithdrawRequest).assignedAuthorizerId === assignedFilter;
+          const ruleForType = assignmentConfig.rules[r.type === 'withdraw' ? 'limit' : r.type];
+          const isSelectedOp = isUserAssignedHandler(r, assignedFilter, ruleForType);
+          const isSelectedAuth = isUserAssignedAuthorizer(r, assignedFilter, assignmentConfig.rules.limit);
           if (!isSelectedOp && !isSelectedAuth) return false;
         }
       }
@@ -309,12 +323,12 @@ export const RequestList: React.FC<RequestListProps> = ({
             <span className="hidden sm:inline">{isSyncing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
           <button
-            id="export-csv-table-btn"
-            onClick={handleExportCSV}
-            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs"
+            id="download-requests-table-btn"
+            onClick={() => setIsDownloadModalOpen(true)}
+            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
           >
             <Download className="w-4 h-4 text-slate-400" />
-            <span>Export CSV</span>
+            <span>Download</span>
           </button>
 
           {canCreate && (
@@ -700,22 +714,39 @@ export const RequestList: React.FC<RequestListProps> = ({
                     {/* Operator Assignment */}
                     <td className="py-4 px-3 text-xs" onClick={(e) => canAssign && e.stopPropagation()}>
                       {canAssign ? (
-                        <select
-                          value={req.assignedOperatorId || ''}
-                          onChange={(e) => assignOperator(req.id, e.target.value)}
-                          className="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                        >
-                          <option value="">Unassigned</option>
-                          {operators.map(op => (
-                            <option key={op.id} value={op.id}>
-                              {op.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div>
+                          <select
+                            value={req.assignedOperatorId || ''}
+                            onChange={(e) => assignOperator(req.id, e.target.value)}
+                            className="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                          >
+                            <option value="">Unassigned</option>
+                            {operators.map(op => (
+                              <option key={op.id} value={op.id}>
+                                {op.name}
+                              </option>
+                            ))}
+                          </select>
+                          {req.assignedHandlers && req.assignedHandlers.length > 1 && (
+                            <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold mt-0.5 truncate max-w-[140px]" title={req.assignedOperatorName}>
+                              Pool: {req.assignedOperatorName}
+                            </div>
+                          )}
+                        </div>
                       ) : (
-                        <span className="text-slate-600 dark:text-slate-300 font-medium">
-                          {req.assignedOperatorName || <span className="text-slate-400">Unassigned</span>}
-                        </span>
+                        <div className="flex flex-wrap gap-1">
+                          {req.assignedHandlers && req.assignedHandlers.length > 0 ? (
+                            req.assignedHandlers.map(h => (
+                              <span key={h.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700">
+                                {h.name}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-slate-600 dark:text-slate-300 font-medium">
+                              {req.assignedOperatorName || <span className="text-slate-400">Unassigned</span>}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
 
@@ -746,6 +777,16 @@ export const RequestList: React.FC<RequestListProps> = ({
           </div>
         )}
       </div>
+
+      {/* Download Modal */}
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        viewType="all-requests"
+        data={requests}
+        staffUsers={allUsers.filter(u => u.role === 'operator' || u.role === 'admin')}
+        currentUserRole={user?.role}
+      />
     </div>
   );
 };

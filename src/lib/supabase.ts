@@ -202,6 +202,16 @@ export function mapDbRequest(row: DbRequest | any): ServiceRequest {
     assignedOperatorName: row.assigned_operator_name || undefined,
     assignedAuthorizerId: (row as any).assigned_authorizer_id || undefined,
     assignedAuthorizerName: (row as any).assigned_authorizer_name || undefined,
+    assignedHandlers: Array.isArray((row as any).assigned_handlers)
+      ? (row as any).assigned_handlers
+      : (row.cma_status?.handlers && Array.isArray(row.cma_status.handlers)
+        ? row.cma_status.handlers
+        : (row.assigned_operator_id ? [{ id: row.assigned_operator_id, name: row.assigned_operator_name || 'Assigned Operator' }] : undefined)),
+    assignedAuthorizers: Array.isArray((row as any).assigned_authorizers)
+      ? (row as any).assigned_authorizers
+      : (row.cma_status?.authorizers && Array.isArray(row.cma_status.authorizers)
+        ? row.cma_status.authorizers
+        : ((row as any).assigned_authorizer_id ? [{ id: (row as any).assigned_authorizer_id, name: (row as any).assigned_authorizer_name || 'Assigned Authorizer' }] : undefined)),
     rejectionReason: (row as any).rejection_reason || undefined,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
@@ -291,10 +301,14 @@ export function mapRequestToDb(req: ServiceRequest): DbRequestInsert {
     client_email: req.clientEmail,
     client_company: req.clientCompany || null,
     kiosk_id: (req as any).kioskId || null,
-    assigned_operator_id: req.assignedOperatorId || null,
-    assigned_operator_name: req.assignedOperatorName || null,
-    assigned_authorizer_id: (req as any).assignedAuthorizerId || null,
-    assigned_authorizer_name: (req as any).assignedAuthorizerName || null,
+    assigned_operator_id: req.assignedHandlers?.[0]?.id || req.assignedOperatorId || null,
+    assigned_operator_name: (req.assignedHandlers && req.assignedHandlers.length > 0)
+      ? req.assignedHandlers.map(h => h.name).join(', ')
+      : (req.assignedOperatorName || null),
+    assigned_authorizer_id: (req as any).assignedAuthorizers?.[0]?.id || (req as any).assignedAuthorizerId || null,
+    assigned_authorizer_name: ((req as any).assignedAuthorizers && (req as any).assignedAuthorizers.length > 0)
+      ? (req as any).assignedAuthorizers.map((a: any) => a.name).join(', ')
+      : ((req as any).assignedAuthorizerName || null),
     rejection_reason: req.rejectionReason || null,
     attachments: (req.attachments || []) as any,
     comments: ((req.comments || []).map((c: any) => {
@@ -348,7 +362,14 @@ export function mapRequestToDb(req: ServiceRequest): DbRequestInsert {
     dbReq.bank_ifsc = wReq.swiftOrIban || null;
     dbReq.reason = wReq.reason || null;
     dbReq.transfer_receipt_ref = wReq.transferReceiptRef || null;
-    dbReq.cma_status = (wReq.cmaStatus || null) as any;
+    const cmaPayload = wReq.cmaStatus ? { ...wReq.cmaStatus } : {};
+    if (wReq.assignedHandlers && wReq.assignedHandlers.length > 0) {
+      cmaPayload.handlers = wReq.assignedHandlers;
+    }
+    if (wReq.assignedAuthorizers && wReq.assignedAuthorizers.length > 0) {
+      cmaPayload.authorizers = wReq.assignedAuthorizers;
+    }
+    dbReq.cma_status = Object.keys(cmaPayload).length > 0 ? cmaPayload : null;
     dbReq.authorized_amount = wReq.authorizedAmount || wReq.cmaStatus?.authorizedAmount || null;
   }
 

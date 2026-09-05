@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { SupportTicket } from '../../types';
+import { SupportTicket, isUserAssignedHandler } from '../../types';
 import { StatusBadge, PriorityBadge, DeletionPendingBadge } from '../common/Badge';
 import { formatShortDateIST } from '../../lib/dateUtils';
 import { THEME_PRESETS } from '../../lib/theme';
+import { DownloadModal } from './DownloadModal';
 import {
   Headphones,
   Bug,
@@ -37,7 +38,8 @@ export const SupportTicketsView: React.FC = () => {
     openCreateModal,
     triggerExportCSV,
     permissions,
-    themeConfig
+    themeConfig,
+    assignmentConfig,
   } = useApp();
 
   const activeHex =
@@ -56,6 +58,7 @@ export const SupportTicketsView: React.FC = () => {
   const [assignedFilter, setAssignedFilter] = useState<string>(user?.role === 'operator' ? 'mine' : 'all');
   const [sortBy, setSortBy] = useState<string>('oldest_pending'); // Default: oldest on not completed request first
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const canCreate = user?.role === 'client' && (permissions[user?.role || 'client']?.canCreateRequest ?? true);
   const isStaff = user?.role === 'admin' || user?.role === 'operator';
@@ -76,12 +79,19 @@ export const SupportTicketsView: React.FC = () => {
       }
 
       // Staff (operator / admin): Must be an assigned request
-      const isAssigned = Boolean(r.assignedOperatorId && r.assignedOperatorId.trim() !== '');
+      const rule = assignmentConfig.rules.support;
+      const isAssigned = Boolean(
+        (r.assignedOperatorId && r.assignedOperatorId.trim() !== '') ||
+        (r.assignedHandlers && r.assignedHandlers.length > 0) ||
+        (rule && (rule.handlers?.length || rule.operatorId))
+      );
       if (!isAssigned) return false;
+      // Staff: hide completed and rejected tickets
+      if (r.status === 'completed' || r.status === 'rejected') return false;
 
       return true;
     }) as SupportTicket[];
-  }, [requests, user]);
+  }, [requests, user, assignmentConfig]);
 
   const categories = [
     { id: 'all', label: 'All Issues', icon: Headphones, count: assignedSupportTickets.length },
@@ -97,9 +107,13 @@ export const SupportTicketsView: React.FC = () => {
     const list = assignedSupportTickets.filter(t => {
       // Assigned staff filter
       if (user?.role === 'operator') {
-        if (assignedFilter === 'mine' && t.assignedOperatorId !== user.id) return false;
+        if (assignedFilter === 'mine' && !isUserAssignedHandler(t, user.id, assignmentConfig.rules.support)) {
+          return false;
+        }
       } else if (user?.role === 'admin') {
-        if (assignedFilter !== 'all' && t.assignedOperatorId !== assignedFilter) return false;
+        if (assignedFilter !== 'all' && !isUserAssignedHandler(t, assignedFilter, assignmentConfig.rules.support)) {
+          return false;
+        }
       }
 
       // Category filter
@@ -239,11 +253,12 @@ export const SupportTicketsView: React.FC = () => {
         <div className="flex items-center gap-2.5 shrink-0">
           {isStaff && (
             <button
-              onClick={triggerExportCSV}
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs"
+              id="download-support-tickets-btn"
+              onClick={() => setIsDownloadModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-400" />
-              <span>Export CSV</span>
+              <span>Download</span>
             </button>
           )}
 
@@ -640,6 +655,16 @@ export const SupportTicketsView: React.FC = () => {
           })}
         </div>
       )}
+      {/* Download Modal */}
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        viewType="support"
+        data={assignedSupportTickets}
+        staffUsers={staffUsers}
+        activeHex={activeHex}
+        currentUserRole={user?.role}
+      />
     </div>
   );
 };

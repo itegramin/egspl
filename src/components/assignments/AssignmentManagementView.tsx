@@ -94,8 +94,8 @@ const MemberPool: React.FC<MemberPoolProps> = ({
         </label>
         {members.length > 1 && !isAuthorizer && (
           <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-            <Scale className="w-3 h-3" />
-            Load-balanced (least open tickets)
+            <Users className="w-3 h-3" />
+            All assigned (shared view & update)
           </span>
         )}
       </div>
@@ -266,7 +266,9 @@ export const AssignmentManagementView: React.FC = () => {
   );
 
   // KPI counts
-  const unassignedCount = requests.filter(r => !r.assignedOperatorId && r.status === 'pending').length;
+  const unassignedCount = requests.filter(
+    r => !r.assignedOperatorId && (!r.assignedHandlers || r.assignedHandlers.length === 0) && r.status === 'pending'
+  ).length;
   const limitRequests = requests.filter(r => r.type === 'withdraw');
   const awaitingAuthCount = limitRequests.filter(r => {
     const wr = r as HoldingWithdrawRequest;
@@ -278,13 +280,20 @@ export const AssignmentManagementView: React.FC = () => {
     const cma = wr.cmaStatus || {};
     return cma.configure && !cma.make;
   }).length;
-  const activeStaffCount = new Set(requests.map(r => r.assignedOperatorId).filter(Boolean)).size;
+  const activeStaffIds = new Set<string>();
+  requests.forEach(r => {
+    if (r.assignedOperatorId) activeStaffIds.add(r.assignedOperatorId);
+    if (r.assignedHandlers) r.assignedHandlers.forEach(h => activeStaffIds.add(h.id));
+    if ((r as any).assignedAuthorizerId) activeStaffIds.add((r as any).assignedAuthorizerId);
+    if ((r as any).assignedAuthorizers) (r as any).assignedAuthorizers.forEach((a: any) => activeStaffIds.add(a.id));
+  });
+  const activeStaffCount = activeStaffIds.size;
 
   // Filtered requests
   const filtered = useMemo(() => {
     let list = [...requests];
 
-    if (tab === 'unassigned') list = list.filter(r => !r.assignedOperatorId && r.status !== 'completed' && r.status !== 'rejected');
+    if (tab === 'unassigned') list = list.filter(r => !r.assignedOperatorId && (!r.assignedHandlers || r.assignedHandlers.length === 0) && r.status !== 'completed' && r.status !== 'rejected');
     else if (tab === 'limit') list = list.filter(r => r.type === 'withdraw');
     else if (tab === 'support') list = list.filter(r => r.type === 'support');
     else if (tab === 'awaiting-auth') {
@@ -505,7 +514,7 @@ export const AssignmentManagementView: React.FC = () => {
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                New requests are automatically load-balanced across the configured handler pool.
+                New requests are automatically assigned to all configured handlers & authorizers with shared visibility.
               </p>
             </div>
             {/* Toggle */}
