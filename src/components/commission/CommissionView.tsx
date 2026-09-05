@@ -182,9 +182,10 @@ export const CommissionView: React.FC = () => {
       monthFilter !== 'all' ? monthFilter : undefined,
       yearFilter !== 'all' ? Number(yearFilter) : undefined,
       allUsers,
-      cspCategories
+      cspCategories,
+      transactionTypes
     );
-  }, [commissionRecords, commissionSplitConfig, tdsConfig, periodFilter, monthFilter, yearFilter, allUsers, cspCategories]);
+  }, [commissionRecords, commissionSplitConfig, tdsConfig, periodFilter, monthFilter, yearFilter, allUsers, cspCategories, transactionTypes]);
 
   // If user is client, match by kioskId or show their first available statement
   const clientStatement = useMemo(() => {

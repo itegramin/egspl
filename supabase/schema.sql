@@ -483,7 +483,7 @@ CREATE TRIGGER on_auth_user_created
 -- -------------------------------------------------------------
 INSERT INTO csmp_role_permissions (role, allowed_pages, can_create_request, can_change_status, can_assign_operator, can_add_internal_notes, can_view_all_clients, can_manage_roles, can_export_reports, can_view_audit_logs)
 VALUES
-  ('admin', '["dashboard", "support", "holding", "all-requests", "assignments", "clients", "analytics", "rbac", "audit-logs", "settings"]'::jsonb, false, true, true, true, true, true, true, true),
+  ('admin', '["dashboard", "support", "holding", "all-requests", "assignments", "clients", "analytics", "rbac", "audit-logs", "settings", "transaction-types"]'::jsonb, false, true, true, true, true, true, true, true),
   ('operator', '["dashboard", "support", "holding", "all-requests", "assignments", "clients", "analytics"]'::jsonb, false, true, true, true, true, false, true, false),
   ('client', '["dashboard", "support", "holding"]'::jsonb, true, false, false, false, false, false, false, false)
 ON CONFLICT (role) DO UPDATE SET
@@ -671,9 +671,65 @@ CREATE POLICY "Admin write access for csmp_csp_categories"
 GRANT ALL ON TABLE csmp_csp_categories TO anon, authenticated, service_role;
 
 INSERT INTO csmp_csp_categories (id, code, name, description, csp_share_percent, corporate_share_percent, is_active)
-VALUES 
+VALUES
   ('cat_rural', 'rural', 'Rural', 'Rural area Customer Service Points (75% base CSP share)', 75, 25, true),
   ('cat_urban', 'urban', 'Urban', 'Urban and Metro Customer Service Points (70% base CSP share)', 70, 30, true)
 ON CONFLICT (code) DO NOTHING;
+
+-- -------------------------------------------------------------
+-- 8. TRANSACTION TYPE MANAGEMENT (Per-type Rural/Urban Split %)
+-- -------------------------------------------------------------
+-- Each transaction type (AEPS Cash Withdrawal, Micro ATM, etc.) can have a
+-- DIFFERENT commission split percentage for Rural vs Urban CSP categories.
+-- transaction_rural_split / transaction_urban_split hold the CSP share % for
+-- that transaction type when the CSP belongs to the matching category.
+CREATE TABLE IF NOT EXISTS csmp_transaction_type (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  tx_type TEXT NOT NULL UNIQUE,
+  transaction_rural_split NUMERIC(5, 2) NOT NULL DEFAULT 70,
+  transaction_urban_split NUMERIC(5, 2) NOT NULL DEFAULT 70,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE csmp_transaction_type ENABLE ROW LEVEL SECURITY;
+
+-- Read allowed for every authenticated session (needed to build reports)
+DROP POLICY IF EXISTS "csmp_transaction_type_read" ON csmp_transaction_type;
+CREATE POLICY "csmp_transaction_type_read"
+  ON csmp_transaction_type
+  FOR SELECT
+  USING (true);
+
+-- Write allowed only for admins / service_role (same convention as csmp_csp_categories)
+DROP POLICY IF EXISTS "csmp_transaction_type_admin_write" ON csmp_transaction_type;
+CREATE POLICY "csmp_transaction_type_admin_write"
+  ON csmp_transaction_type
+  FOR ALL
+  USING (
+    auth.role() = 'service_role' OR
+    EXISTS (
+      SELECT 1 FROM public.csmp_users
+      WHERE auth_user_id = auth.uid() AND role = 'admin'
+    )
+  );
+
+GRANT ALL ON TABLE csmp_transaction_type TO anon, authenticated, service_role;
+
+-- Seed standard transaction types with differentiated rural/urban splits.
+-- Rural CSPs default to 75% CSP share; Urban defaults to 70%.
+INSERT INTO csmp_transaction_type (id, name, description, tx_type, transaction_rural_split, transaction_urban_split, is_active)
+VALUES
+  ('ttx_aeps_cash_withdrawal', 'AEPS Cash Withdrawal', 'Aadhaar Enabled Payment System cash withdrawal', 'AEPS_CASH_WITHDRAWAL', 75, 70, true),
+  ('ttx_micro_atm', 'Micro ATM', 'Micro ATM cash-out and transactions', 'MICRO_ATM', 75, 70, true),
+  ('ttx_saving_account_opening', 'Saving Account Opening', 'New bank saving account opening / eKYC onboarding', 'SAVING_ACCOUNT_OPENING', 75, 75, true),
+  ('ttx_pmjjby', 'PMJJBY', 'Pradhan Mantri Jeevan Jyoti Bima Yojana enrolment', 'PMJJBY', 80, 75, true),
+  ('ttx_pmsby', 'PMSBY', 'Pradhan Mantri Suraksha Bima Yojana enrolment', 'PMSBY', 80, 75, true),
+  ('ttx_imps_remittance', 'IMPS Remittance', 'IMPS money transfer / remittance', 'IMPS_REMITTANCE', 75, 70, true),
+  ('ttx_passbook_printing', 'Passbook Printing', 'Passbook update and printing services', 'PASSBOOK_PRINTING', 80, 80, true)
+ON CONFLICT (name) DO NOTHING;
 
 

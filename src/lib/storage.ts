@@ -74,7 +74,7 @@ function stripPii(user: User): SafeUserCache {
 export const DEFAULT_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: {
     role: 'admin',
-    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings', 'transaction-types'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -453,11 +453,14 @@ export function saveTdsConfig(cfg: TdsConfig): void {
 export function getStoredTransactionTypes(): TransactionTypeDefinition[] {
   try {
     const raw = localStorage.getItem(COMMISSION_TRANSACTION_TYPES_KEY);
-    if (!raw) return [];
+    if (!raw) {
+      saveTransactionTypes(DEFAULT_TRANSACTION_TYPES);
+      return DEFAULT_TRANSACTION_TYPES;
+    }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_TRANSACTION_TYPES;
   } catch {
-    return [];
+    return DEFAULT_TRANSACTION_TYPES;
   }
 }
 
@@ -468,6 +471,79 @@ export function saveTransactionTypes(types: TransactionTypeDefinition[]): void {
     console.warn('Could not save transaction types to localStorage:', err);
   }
 }
+
+export const DEFAULT_TRANSACTION_TYPES: TransactionTypeDefinition[] = [
+  {
+    id: 'ttx_aeps_cash_withdrawal',
+    code: 'AEPS_CASH_WITHDRAWAL',
+    name: 'AEPS Cash Withdrawal',
+    category: 'banking',
+    description: 'Aadhaar Enabled Payment System cash withdrawal',
+    transactionRuralSplit: 75,
+    transactionUrbanSplit: 70,
+    isActive: true,
+  },
+  {
+    id: 'ttx_micro_atm',
+    code: 'MICRO_ATM',
+    name: 'Micro ATM',
+    category: 'banking',
+    description: 'Micro ATM cash-out and transactions',
+    transactionRuralSplit: 75,
+    transactionUrbanSplit: 70,
+    isActive: true,
+  },
+  {
+    id: 'ttx_saving_account_opening',
+    code: 'SAVING_ACCOUNT_OPENING',
+    name: 'Saving Account Opening',
+    category: 'onboarding',
+    description: 'New bank saving account opening / eKYC onboarding',
+    transactionRuralSplit: 75,
+    transactionUrbanSplit: 75,
+    isActive: true,
+  },
+  {
+    id: 'ttx_pmjjby',
+    code: 'PMJJBY',
+    name: 'PMJJBY',
+    category: 'social_security',
+    description: 'Pradhan Mantri Jeevan Jyoti Bima Yojana enrolment',
+    transactionRuralSplit: 80,
+    transactionUrbanSplit: 75,
+    isActive: true,
+  },
+  {
+    id: 'ttx_pmsby',
+    code: 'PMSBY',
+    name: 'PMSBY',
+    category: 'social_security',
+    description: 'Pradhan Mantri Suraksha Bima Yojana enrolment',
+    transactionRuralSplit: 80,
+    transactionUrbanSplit: 75,
+    isActive: true,
+  },
+  {
+    id: 'ttx_imps_remittance',
+    code: 'IMPS_REMITTANCE',
+    name: 'IMPS Remittance',
+    category: 'banking',
+    description: 'IMPS money transfer / remittance',
+    transactionRuralSplit: 75,
+    transactionUrbanSplit: 70,
+    isActive: true,
+  },
+  {
+    id: 'ttx_passbook_printing',
+    code: 'PASSBOOK_PRINTING',
+    name: 'Passbook Printing',
+    category: 'banking',
+    description: 'Passbook update and printing services',
+    transactionRuralSplit: 80,
+    transactionUrbanSplit: 80,
+    isActive: true,
+  },
+];
 
 export const DEFAULT_CSP_CATEGORIES: CspCategory[] = [
   {

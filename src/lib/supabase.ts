@@ -574,7 +574,7 @@ export async function deleteRequestFromSupabase(reqId: string): Promise<void> {
 export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: {
     role: 'admin',
-    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings', 'transaction-types'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -1156,6 +1156,107 @@ export async function saveCspCategoryToSupabase(cat: CspCategory): Promise<void>
     if (error) throw error;
   } catch (err: any) {
     console.warn('Could not persist CSP category to Supabase:', err?.message);
+  }
+}
+
+// -------------------------------------------------------------
+// TRANSACTION TYPE MANAGEMENT: Per-type Rural/Urban split %
+// -------------------------------------------------------------
+
+function inferTxCategory(name: string): TransactionTypeDefinition['category'] {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('pmjjby') || lower.includes('pmsby') || lower.includes('apy') || lower.includes('har ghar suraksha')) {
+    return 'social_security';
+  }
+  if (lower.includes('open') || lower.includes('opening') || lower.includes('ekyc')) {
+    return 'onboarding';
+  }
+  if (lower.includes('loan')) {
+    return 'credit';
+  }
+  if (
+    lower.includes('withdrawal') || lower.includes('deposit') || lower.includes('transfer') ||
+    lower.includes('card') || lower.includes('matm') || lower.includes('aeps') || lower.includes('atm') || lower.includes('remittance')
+  ) {
+    return 'banking';
+  }
+  return 'other';
+}
+
+export async function fetchTransactionTypesFromSupabase(): Promise<TransactionTypeDefinition[]> {
+  const localTypes = getStoredTransactionTypes();
+  if (!isSupabaseConfigured) return localTypes;
+
+  try {
+    const { data, error } = await supabase
+      .from('csmp_transaction_type')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      // Preserve richer local metadata (category descriptor) where a row matches
+      const localByName = new Map(localTypes.map(t => [(t.name || '').trim().toLowerCase(), t]));
+      const types: TransactionTypeDefinition[] = data.map((r: any) => {
+        const local = localByName.get((r.name || '').trim().toLowerCase());
+        return {
+          id: r.id,
+          code: r.tx_type || local?.code || (r.name || '').toUpperCase().replace(/[^A-Z0-9]/g, '_'),
+          name: r.name,
+          category: local?.category || inferTxCategory(r.name),
+          description: r.description || local?.description || undefined,
+          transactionRuralSplit: r.transaction_rural_split != null ? Number(r.transaction_rural_split) : undefined,
+          transactionUrbanSplit: r.transaction_urban_split != null ? Number(r.transaction_urban_split) : undefined,
+          isActive: r.is_active ?? true,
+        };
+      });
+      saveTransactionTypes(types);
+      return types;
+    }
+
+    return localTypes;
+  } catch (err: any) {
+    console.warn('Supabase fetchTransactionTypes offline, using fallback:', err?.message);
+    return localTypes;
+  }
+}
+
+export async function saveTransactionTypeToSupabase(tt: TransactionTypeDefinition): Promise<void> {
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const payload = {
+      id: tt.id,
+      name: tt.name,
+      description: tt.description || null,
+      tx_type: tt.code,
+      transaction_rural_split: tt.transactionRuralSplit ?? 70,
+      transaction_urban_split: tt.transactionUrbanSplit ?? 70,
+      is_active: tt.isActive,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('csmp_transaction_type')
+      .upsert(payload, { onConflict: 'id' });
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('Could not persist transaction type to Supabase:', err?.message);
+  }
+}
+
+export async function deleteTransactionTypeFromSupabase(ttId: string): Promise<void> {
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const { error } = await supabase
+      .from('csmp_transaction_type')
+      .delete()
+      .eq('id', ttId);
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('Could not delete transaction type from Supabase:', err?.message);
   }
 }
 

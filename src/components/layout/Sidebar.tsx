@@ -20,6 +20,7 @@ import {
   ExternalLink,
   X,
   BadgePercent,
+  Tags,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NavLink } from 'react-router-dom';
@@ -87,6 +88,11 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     icon: BadgePercent,
   },
   {
+    id: 'transaction-types',
+    label: 'Transaction Types',
+    icon: Tags,
+  },
+  {
     id: 'analytics',
     label: 'Analytics',
     icon: BarChart3,
@@ -126,6 +132,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'assignments',
     'clients',
     'commissions',
+    'transaction-types',
     'analytics',
     'rbac',
     'audit-logs',

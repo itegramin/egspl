@@ -18,8 +18,14 @@ export interface RawCommissionRecord {
 
 export interface ProductSplitOverride {
   transactionType: string;
-  cspPercent: number;          // e.g. 75
-  corporatePercent: number;    // e.g. 25
+  cspPercent: number;          // e.g. 75 (legacy single-ratio)
+  corporatePercent: number;    // e.g. 25 (legacy single-ratio)
+  /** Category-specific CSP% for Rural — when set, wins over `cspPercent` for rural CSPs (e.g. 70 = CSP 70 / BC 30). */
+  ruralCspPercent?: number;
+  ruralCorporatePercent?: number;
+  /** Category-specific CSP% for Urban — when set, wins over `cspPercent` for urban CSPs (e.g. 60 = CSP 60 / BC 40). */
+  urbanCspPercent?: number;
+  urbanCorporatePercent?: number;
   effectiveFrom?: string;      // YYYY-MM or YYYY-MM-DD
   effectiveTo?: string;
 }
@@ -74,6 +80,10 @@ export interface TransactionTypeDefinition {
   category: 'banking' | 'social_security' | 'onboarding' | 'credit' | 'other';
   description?: string;
   defaultCommissionRate?: number; // indicative bank rate
+  /** CSP share % for Rural CSPs for THIS transaction type (e.g. 75) */
+  transactionRuralSplit?: number;
+  /** CSP share % for Urban CSPs for THIS transaction type (e.g. 70) */
+  transactionUrbanSplit?: number;
   isActive: boolean;
 }
 

@@ -93,6 +93,9 @@ import {
   saveCommissionConfigToSupabase,
   fetchCspCategoriesFromSupabase,
   saveCspCategoryToSupabase,
+  fetchTransactionTypesFromSupabase,
+  saveTransactionTypeToSupabase,
+  deleteTransactionTypeFromSupabase,
 } from '../lib/supabase';
 import { ThemeConfig, getStoredTheme, applyTheme, DEFAULT_THEME } from '../lib/theme';
 import { useAuth } from './AuthContext';
@@ -269,6 +272,7 @@ interface AppContextType {
   updateCspCategory: (cat: CspCategory) => Promise<void>;
   addTransactionType: (tt: TransactionTypeDefinition) => void;
   upsertTransactionType: (tt: TransactionTypeDefinition) => void;
+  removeTransactionType: (ttId: string) => void;
 
   // Utilities
   triggerExportCSV: () => void;
@@ -301,6 +305,7 @@ const VALID_PAGES: PageId[] = [
   'audit-logs',
   'notifications',
   'settings',
+  'transaction-types',
 ];
 
 const PAGE_ALIASES: Record<string, PageId> = {
@@ -321,6 +326,11 @@ const PAGE_ALIASES: Record<string, PageId> = {
   'commission-reports': 'commissions',
   'commission-report': 'commissions',
   'commission-statements': 'commissions',
+  'transaction-types': 'transaction-types',
+  transactiontypes: 'transaction-types',
+  'transaction-type': 'transaction-types',
+  'transaction-type-management': 'transaction-types',
+  'split-configuration': 'transaction-types',
   audit: 'audit-logs',
   auditlogs: 'audit-logs',
   'audit-logs': 'audit-logs',
@@ -553,10 +563,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Commission records and rules
-        const [dbComms, dbConfigs, dbCats] = await Promise.all([
+        const [dbComms, dbConfigs, dbCats, dbTxTypes] = await Promise.all([
           fetchCommissionRecordsFromSupabase().catch(() => null),
           fetchCommissionConfigsFromSupabase().catch(() => null),
           fetchCspCategoriesFromSupabase().catch(() => null),
+          fetchTransactionTypesFromSupabase().catch(() => null),
         ]);
         if (dbComms && dbComms.length > 0) {
           setCommissionRecords(dbComms);
@@ -570,6 +581,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         if (dbCats && dbCats.length > 0) {
           setCspCategories(dbCats);
+        }
+        // Per-transaction-type rural/urban splits come from csmp_transaction_type
+        // (the authoritative config source). Merge so DB values (splits) win, while
+        // keeping locally-discovered types that have no DB row yet.
+        if (dbTxTypes && dbTxTypes.length > 0) {
+          setTransactionTypes(prev => {
+            const byName = new Map(prev.map(t => [(t.name || '').trim().toLowerCase(), t]));
+            const merged: TransactionTypeDefinition[] = dbTxTypes.map(t => {
+              const local = byName.get((t.name || '').trim().toLowerCase());
+              return {
+                ...local,
+                ...t,
+                category: t.category || local?.category || 'other',
+                description: t.description || local?.description,
+              };
+            });
+            const dbNames = new Set(dbTxTypes.map(t => (t.name || '').trim().toLowerCase()));
+            prev.forEach(t => {
+              const key = (t.name || '').trim().toLowerCase();
+              if (!dbNames.has(key)) {
+                merged.push({
+                  ...t,
+                  transactionRuralSplit: t.transactionRuralSplit ?? 75,
+                  transactionUrbanSplit: t.transactionUrbanSplit ?? 70,
+                });
+              }
+            });
+            saveTransactionTypes(merged);
+            return merged;
+          });
         }
 
         // Dynamic discovery of transaction types from raw records
@@ -602,6 +643,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   name,
                   category,
                   description: `Discovered from database: ${name}`,
+                  // Defaults until an admin tunes them in Transaction Type Management
+                  transactionRuralSplit: 75,
+                  transactionUrbanSplit: 70,
                   isActive: true,
                 });
                 changed = true;
@@ -2419,9 +2463,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       saveTransactionTypes(next);
       saveCommissionConfigToSupabase('transaction_types', next, user?.name || 'Admin').catch(() => null);
+      // Persist to the authoritative per-type split table (csmp_transaction_type)
+      saveTransactionTypeToSupabase(tt).catch(() => null);
       return next;
     });
     toast(`Transaction type "${tt.name}" saved.`, 'success');
+  };
+
+  const removeTransactionType = (ttId: string) => {
+    setTransactionTypes(prev => {
+      const target = prev.find(t => t.id === ttId);
+      const next = prev.filter(t => t.id !== ttId);
+      saveTransactionTypes(next);
+      saveCommissionConfigToSupabase('transaction_types', next, user?.name || 'Admin').catch(() => null);
+      deleteTransactionTypeFromSupabase(ttId).catch(() => null);
+      if (target) toast(`Transaction type "${target.name}" deleted.`, 'warning');
+      return next;
+    });
   };
 
   const addTransactionType = (tt: TransactionTypeDefinition) => {
@@ -2511,6 +2569,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCspCategory,
         addTransactionType,
         upsertTransactionType,
+        removeTransactionType,
         triggerExportCSV,
         resetAllDemoData,
         toast,

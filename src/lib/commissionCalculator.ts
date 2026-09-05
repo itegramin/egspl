@@ -96,20 +96,69 @@ export function getApplicableSplit(
   transactionType: string,
   splitConfig: CommissionSplitConfig,
   cspCategory?: string,
-  categories?: CspCategory[]
+  categories?: CspCategory[],
+  transactionTypes?: TransactionTypeDefinition[]
 ): { cspPercent: number; corporatePercent: number } {
-  // 1. Transaction-type specific override takes precedence
+  const catCode = (cspCategory || 'rural').toLowerCase().trim();
+
+  // 1. Per-transaction-type rural/urban split wins — the most specific rule.
+  //    Configured in Transaction Type Management (csmp_transaction_type).
+  if (transactionTypes && transactionTypes.length > 0) {
+    const tt = transactionTypes.find(
+      (t) => t.isActive && (t.name || '').toLowerCase().trim() === (transactionType || '').toLowerCase().trim()
+    );
+    if (tt) {
+      const split =
+        catCode === 'urban'
+          ? Number(tt.transactionUrbanSplit)
+          : Number(tt.transactionRuralSplit);
+      if (typeof split === 'number' && !isNaN(split) && split > 0) {
+        return {
+          cspPercent: Math.round(split * 100) / 100,
+          corporatePercent: Math.round((100 - split) * 100) / 100,
+        };
+      }
+    }
+  }
+
+  // 2. Product-Specific Override Rules (supports per-category rural/urban splits)
+  //    Each override can have `ruralCspPercent`/`urbanCspPercent` so AEPS rural=70/30
+  //    and urban=60/40 can be configured independently. Falls back to legacy
+  //    single `cspPercent` when category-specific values are not set.
   const override = splitConfig.overrides?.[transactionType];
   if (override) {
+    const hasCategorySplit =
+      (override.ruralCspPercent != null && (catCode === 'rural' || catCode === '')) ||
+      (override.urbanCspPercent != null && catCode === 'urban');
+    if (hasCategorySplit) {
+      if (catCode === 'urban' && override.urbanCspPercent != null) {
+        const pct = Number(override.urbanCspPercent);
+        if (!isNaN(pct) && pct > 0) {
+          return {
+            cspPercent: Math.round(pct * 100) / 100,
+            corporatePercent: Math.round((100 - pct) * 100) / 100,
+          };
+        }
+      } else if (catCode === 'rural' && override.ruralCspPercent != null) {
+        const pct = Number(override.ruralCspPercent);
+        if (!isNaN(pct) && pct > 0) {
+          return {
+            cspPercent: Math.round(pct * 100) / 100,
+            corporatePercent: Math.round((100 - pct) * 100) / 100,
+          };
+        }
+      } else if (override.urbanCspPercent == null && override.ruralCspPercent != null) {
+        // Only one side is set: use it for its category, fall through otherwise
+      }
+    }
+    // Fall back to legacy single-ratio override (backward-compatible)
     return {
       cspPercent: override.cspPercent,
       corporatePercent: override.corporatePercent,
     };
   }
 
-  const catCode = (cspCategory || 'rural').toLowerCase().trim();
-
-  // 2. Check dynamic categories table from database
+  // 3. Check dynamic categories table from database
   if (categories && categories.length > 0) {
     const matched = categories.find((c) => c.code.toLowerCase() === catCode && c.isActive);
     if (matched) {
@@ -120,7 +169,7 @@ export function getApplicableSplit(
     }
   }
 
-  // 3. Check splitConfig categorySplits
+  // 4. Check splitConfig categorySplits
   if (splitConfig.categorySplits?.[catCode]) {
     return {
       cspPercent: splitConfig.categorySplits[catCode].cspPercent,
@@ -128,7 +177,7 @@ export function getApplicableSplit(
     };
   }
 
-  // 4. Default rules per category: Rural = 75% CSP, Urban = 70% CSP
+  // 5. Default rules per category: Rural = 75% CSP, Urban = 70% CSP
   if (catCode === 'rural') {
     return { cspPercent: 75, corporatePercent: 25 };
   }
@@ -147,13 +196,15 @@ export function calculateCommissionItem(
   splitConfig: CommissionSplitConfig,
   tdsConfig: TdsConfig,
   cspCategory?: string,
-  categories?: CspCategory[]
+  categories?: CspCategory[],
+  transactionTypes?: TransactionTypeDefinition[]
 ): CalculatedCommissionItem {
   const { cspPercent, corporatePercent } = getApplicableSplit(
     record.transactionType,
     splitConfig,
     cspCategory,
-    categories
+    categories,
+    transactionTypes
   );
   const rawCommission = Math.max(0, record.rawCommission || 0);
 
@@ -221,7 +272,8 @@ export function calculateCspStatements(
   filterMonth?: string,
   filterYear?: number,
   users?: User[],
-  categories?: CspCategory[]
+  categories?: CspCategory[],
+  transactionTypes?: TransactionTypeDefinition[]
 ): CspCommissionStatement[] {
   const filtered = records.filter((r) => {
     if (filterPeriod && filterPeriod !== 'all' && r.period !== filterPeriod) {
@@ -304,7 +356,7 @@ export function calculateCspStatements(
     const calculatedItems: CalculatedCommissionItem[] = [];
 
     for (const rec of groupRecords) {
-      const calc = calculateCommissionItem(rec, splitConfig, tdsConfig, cspCategory, categories);
+      const calc = calculateCommissionItem(rec, splitConfig, tdsConfig, cspCategory, categories, transactionTypes);
       calculatedItems.push(calc);
 
       const rawAmount = calc.raw.rawCommission || 0;

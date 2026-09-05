@@ -35,6 +35,10 @@ export type DbCspCategory = Tables<'csmp_csp_categories'>;
 export type DbCspCategoryInsert = TablesInsert<'csmp_csp_categories'>;
 export type DbCspCategoryUpdate = TablesUpdate<'csmp_csp_categories'>;
 
+export type DbTransactionType = Tables<'csmp_transaction_type'>;
+export type DbTransactionTypeInsert = TablesInsert<'csmp_transaction_type'>;
+export type DbTransactionTypeUpdate = TablesUpdate<'csmp_transaction_type'>;
+
 // ============================================================================
 // CORE APPLICATION ROLES & VIEWS
 // ============================================================================
@@ -55,7 +59,8 @@ export type PageId =
   | 'rbac'
   | 'audit-logs'
   | 'notifications'
-  | 'settings';
+  | 'settings'
+  | 'transaction-types';
 
 export interface PageMetadata {
   id: PageId;
@@ -69,6 +74,7 @@ export const APP_PAGE_DEFINITIONS: PageMetadata[] = [
   { id: 'support', name: 'Support Requests', desc: 'Category-filtered tickets, bug reports, and screenshot reviews', category: 'operations' },
   { id: 'holding', name: 'Limit Requests', desc: 'Deposit confirmation slips and withdrawal payout requests', category: 'operations' },
   { id: 'commissions', name: 'Commission Reports', desc: 'CSP commission statements, 70-30 split, TDS deductions, and revenue analytics', category: 'operations' },
+  { id: 'transaction-types', name: 'Transaction Type Management', desc: 'Configure transaction types with per-category (rural/urban) commission split percentages', category: 'operations' },
   { id: 'all-requests', name: 'All Service Requests', desc: 'Master directory table with multi-parameter filtering and search', category: 'operations' },
   { id: 'assignments', name: 'Assignment Management', desc: 'Workload distribution, operator assignment, and authorizer sign-off', category: 'operations' },
   { id: 'clients', name: 'User Directory (CRM)', desc: 'Client account list, holding balances, and portfolio histories', category: 'operations' },

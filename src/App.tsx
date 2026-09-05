@@ -34,6 +34,7 @@ import { NotificationLogsView } from './components/notifications/NotificationLog
 import { SettingsView } from './components/settings/SettingsView';
 import { AssignmentManagementView } from './components/assignments/AssignmentManagementView';
 import { CommissionView } from './components/commission/CommissionView';
+import { TransactionTypeManagement } from './components/commission/TransactionTypeManagement';
 
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
@@ -85,6 +86,8 @@ const MainLayout: React.FC = () => {
         return <ClientDirectory />;
       case 'commissions':
         return <CommissionView />;
+      case 'transaction-types':
+        return <TransactionTypeManagement />;
       case 'analytics':
         return <AnalyticsView />;
       case 'rbac':
@@ -209,6 +212,7 @@ export default function App() {
           <Route path="/assignments" element={<AppContent />} />
           <Route path="/clients" element={<AppContent />} />
           <Route path="/commissions" element={<AppContent />} />
+            <Route path="/transaction-types" element={<AppContent />} />
           <Route path="/analytics" element={<AppContent />} />
           <Route path="/rbac" element={<AppContent />} />
           <Route path="/audit-logs" element={<AppContent />} />

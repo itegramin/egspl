@@ -8,6 +8,8 @@ import {
   Check,
   Sparkles,
   RotateCcw,
+  MapPin,
+  Building2,
 } from 'lucide-react';
 
 interface ProductOverrideModalProps {
@@ -33,8 +35,11 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [selectedType, setSelectedType] = useState<string>('');
 
-  // Percentage state
+  // Percentage state: when category split is enabled, these are the per-category values
   const [cspPercent, setCspPercent] = useState<number>(commissionSplitConfig.defaultCspPercent);
+  const [ruralCspPercent, setRuralCspPercent] = useState<number>(commissionSplitConfig.defaultCspPercent);
+  const [urbanCspPercent, setUrbanCspPercent] = useState<number>(commissionSplitConfig.defaultCspPercent);
+  const [useSplitOverride, setUseSplitOverride] = useState(false);
 
   // New Transaction Type form fields
   const [newTypeName, setNewTypeName] = useState('');
@@ -80,24 +85,48 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
     }
   }, [isOpen, initialSelectedType, allAvailableTypes]);
 
-  // When selectedType changes, populate its existing percentage or default
+  // When selectedType changes, populate its existing percentages or defaults
   useEffect(() => {
     if (!selectedType) return;
     const existingOverride = commissionSplitConfig.overrides?.[selectedType];
     if (existingOverride) {
-      setCspPercent(existingOverride.cspPercent);
+      const hasCategorySplit =
+        existingOverride.ruralCspPercent != null || existingOverride.urbanCspPercent != null;
+      if (hasCategorySplit) {
+        setRuralCspPercent(
+          existingOverride.ruralCspPercent != null ? existingOverride.ruralCspPercent : existingOverride.cspPercent
+        );
+        setUrbanCspPercent(
+          existingOverride.urbanCspPercent != null ? existingOverride.urbanCspPercent : existingOverride.cspPercent
+        );
+        setUseSplitOverride(true);
+        setCspPercent(existingOverride.cspPercent);
+      } else {
+        setCspPercent(existingOverride.cspPercent);
+        setRuralCspPercent(existingOverride.cspPercent);
+        setUrbanCspPercent(existingOverride.cspPercent);
+        setUseSplitOverride(false);
+      }
     } else {
       setCspPercent(commissionSplitConfig.defaultCspPercent);
+      setRuralCspPercent(commissionSplitConfig.defaultCspPercent);
+      setUrbanCspPercent(commissionSplitConfig.defaultCspPercent);
+      setUseSplitOverride(false);
     }
   }, [selectedType, commissionSplitConfig]);
 
   if (!isOpen) return null;
 
   const corporatePercent = Math.max(0, Math.min(100, Math.round((100 - cspPercent) * 10) / 10));
+  const ruralCorp = Math.max(0, Math.min(100, Math.round((100 - ruralCspPercent) * 10) / 10));
+  const urbanCorp = Math.max(0, Math.min(100, Math.round((100 - urbanCspPercent) * 10) / 10));
   const activeOverride = selectedType ? commissionSplitConfig.overrides?.[selectedType] : undefined;
   const isCurrentlyOverridden = Boolean(activeOverride);
+  const hasActiveCategorySplit =
+    activeOverride != null &&
+    (activeOverride.ruralCspPercent != null || activeOverride.urbanCspPercent != null);
 
-  // Quick preset ratios
+  // Quick preset ratios (single-ratio mode)
   const presets = [
     { label: '70 / 30 (Default)', csp: 70 },
     { label: '75 / 25', csp: 75 },
@@ -105,6 +134,33 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
     { label: '85 / 15', csp: 85 },
     { label: '90 / 10', csp: 90 },
   ];
+
+  const buildOverrideRecord = (
+    name: string,
+    singleCsp: number,
+    singleCorp: number
+  ) => {
+    if (useSplitOverride) {
+      const r = Math.max(0, Math.min(100, Math.round(ruralCspPercent * 100) / 100));
+      const u = Math.max(0, Math.min(100, Math.round(urbanCspPercent * 100) / 100));
+      return {
+        transactionType: name,
+        cspPercent: singleCsp, // kept as fallback for older readers
+        corporatePercent: singleCorp,
+        ruralCspPercent: r,
+        ruralCorporatePercent: Math.max(0, Math.min(100, Math.round((100 - r) * 100) / 100)),
+        urbanCspPercent: u,
+        urbanCorporatePercent: Math.max(0, Math.min(100, Math.round((100 - u) * 100) / 100)),
+        effectiveFrom: new Date().toISOString().split('T')[0],
+      };
+    }
+    return {
+      transactionType: name,
+      cspPercent: singleCsp,
+      corporatePercent: singleCorp,
+      effectiveFrom: new Date().toISOString().split('T')[0],
+    };
+  };
 
   // Handle saving an override for the selected type
   const handleSaveOverride = async () => {
@@ -121,17 +177,15 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
         name: trimmedName,
         category: newTypeCategory,
         isActive: true,
+        // Persist current category splits down to TransactionTypeManagement as well
+        transactionRuralSplit: useSplitOverride ? ruralCspPercent : cspPercent,
+        transactionUrbanSplit: useSplitOverride ? urbanCspPercent : cspPercent,
       });
 
       // Save override
       const updatedOverrides = {
         ...(commissionSplitConfig.overrides || {}),
-        [trimmedName]: {
-          transactionType: trimmedName,
-          cspPercent: cspPercent,
-          corporatePercent: corporatePercent,
-          effectiveFrom: new Date().toISOString().split('T')[0],
-        },
+        [trimmedName]: buildOverrideRecord(trimmedName, cspPercent, corporatePercent),
       };
 
       await updateSplitConfig({
@@ -150,12 +204,7 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
 
       const updatedOverrides = {
         ...(commissionSplitConfig.overrides || {}),
-        [selectedType]: {
-          transactionType: selectedType,
-          cspPercent: cspPercent,
-          corporatePercent: corporatePercent,
-          effectiveFrom: new Date().toISOString().split('T')[0],
-        },
+        [selectedType]: buildOverrideRecord(selectedType, cspPercent, corporatePercent),
       };
 
       await updateSplitConfig({
@@ -226,6 +275,9 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
                   onClick={() => {
                     setIsAddingNew(true);
                     setCspPercent(commissionSplitConfig.defaultCspPercent);
+                    setRuralCspPercent(commissionSplitConfig.defaultCspPercent);
+                    setUrbanCspPercent(commissionSplitConfig.defaultCspPercent);
+                    setUseSplitOverride(false);
                   }}
                   className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
                 >
@@ -239,7 +291,17 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
                     setIsAddingNew(false);
                     if (selectedType) {
                       const ex = commissionSplitConfig.overrides?.[selectedType];
-                      setCspPercent(ex ? ex.cspPercent : commissionSplitConfig.defaultCspPercent);
+                      if (ex && (ex.ruralCspPercent != null || ex.urbanCspPercent != null)) {
+                        setUseSplitOverride(true);
+                        setRuralCspPercent(ex.ruralCspPercent != null ? ex.ruralCspPercent : ex.cspPercent);
+                        setUrbanCspPercent(ex.urbanCspPercent != null ? ex.urbanCspPercent : ex.cspPercent);
+                      } else if (ex) {
+                        setUseSplitOverride(false);
+                        setCspPercent(ex.cspPercent);
+                      } else {
+                        setUseSplitOverride(false);
+                        setCspPercent(commissionSplitConfig.defaultCspPercent);
+                      }
                     }
                   }}
                   className="px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold transition-all"
@@ -278,7 +340,9 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
                       {isCurrentlyOverridden ? (
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" />
-                          Custom Override Active ({activeOverride?.cspPercent}% CSP / {activeOverride?.corporatePercent}% BC)
+                          {hasActiveCategorySplit
+                            ? `Rural ${activeOverride?.ruralCspPercent ?? activeOverride?.cspPercent}% / Urban ${activeOverride?.urbanCspPercent ?? activeOverride?.cspPercent}%`
+                            : `${activeOverride?.cspPercent}% CSP / ${activeOverride?.corporatePercent}% BC (uniform)`}
                         </span>
                       ) : (
                         <span className="text-slate-400 font-medium">
@@ -358,130 +422,250 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
                 <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
                 <span>Configure Split Percentages</span>
               </h3>
-              <span className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-                Total: {Math.round(cspPercent + corporatePercent)}%
-              </span>
-            </div>
-
-            {/* Visual Ratio Split Bar */}
-            <div className="space-y-1.5">
-              <div className="h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner">
-                <div
-                  style={{ width: `${cspPercent}%` }}
-                  className="bg-emerald-500 h-full transition-all duration-300"
-                  title={`CSP Share: ${cspPercent}%`}
-                />
-                <div
-                  style={{ width: `${corporatePercent}%` }}
-                  className="bg-indigo-600 h-full transition-all duration-300"
-                  title={`Corporate BC Share: ${corporatePercent}%`}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[11px] font-semibold">
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  CSP Share: {cspPercent}%
-                </span>
-                <span className="text-indigo-600 dark:text-indigo-400">
-                  Corporate BC Share: {corporatePercent}%
-                </span>
-              </div>
-            </div>
-
-            {/* Inputs */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  CSP Commission Share (%)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.5"
-                    value={cspPercent}
-                    onChange={(e) => {
-                      const val = Math.max(0, Math.min(100, Number(e.target.value)));
-                      setCspPercent(val);
-                    }}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
-                  />
-                  <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">%</span>
-                </div>
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300">
                 <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={cspPercent}
-                  onChange={(e) => setCspPercent(Number(e.target.value))}
-                  className="w-full mt-2 accent-emerald-500"
+                  type="checkbox"
+                  checked={useSplitOverride}
+                  onChange={e => {
+                    const next = e.target.checked;
+                    setUseSplitOverride(next);
+                    if (next) {
+                      setRuralCspPercent(cspPercent);
+                      setUrbanCspPercent(cspPercent);
+                    }
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Corporate BC Share (%)
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    disabled
-                    value={corporatePercent}
-                    className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold"
-                  />
-                  <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">%</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-2">
-                  Automatically balanced to equal 100% of raw bank commission
-                </p>
-              </div>
+                <span>Differentiate Rural vs Urban</span>
+              </label>
             </div>
 
-            {/* Presets */}
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
-              <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
-                Quick Ratio Presets:
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {presets.map((p) => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => setCspPercent(p.csp)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
-                      cspPercent === p.csp
-                        ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Live Calculation Preview */}
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 text-xs space-y-1">
-              <div className="font-semibold text-slate-700 dark:text-slate-300">
-                Prorated Commission Calculation Example:
-              </div>
-              <div className="text-slate-500 dark:text-slate-400 text-[11px]">
-                On <span className="font-semibold text-slate-700 dark:text-slate-200">₹ 1,000.00</span> gross bank commission for{' '}
-                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                  {isAddingNew ? newTypeName || 'New Product' : selectedType}
-                </span>:
-                <div className="mt-1 font-mono flex items-center gap-3">
-                  <span className="text-emerald-600 dark:text-emerald-400">
-                    CSP: ₹ {((1000 * cspPercent) / 100).toFixed(2)} ({cspPercent}%)
-                  </span>
-                  <span className="text-slate-300">|</span>
-                  <span className="text-indigo-600 dark:text-indigo-400">
-                    Corporate BC: ₹ {((1000 * corporatePercent) / 100).toFixed(2)} ({corporatePercent}%)
+            {!useSplitOverride ? (
+              <>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                    Total: {Math.round(cspPercent + corporatePercent)}%
                   </span>
                 </div>
-              </div>
-            </div>
+                {/* Visual Ratio Split Bar (uniform) */}
+                <div className="space-y-1.5">
+                  <div className="h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner">
+                    <div
+                      style={{ width: `${cspPercent}%` }}
+                      className="bg-emerald-500 h-full transition-all duration-300"
+                      title={`CSP Share: ${cspPercent}%`}
+                    />
+                    <div
+                      style={{ width: `${corporatePercent}%` }}
+                      className="bg-indigo-600 h-full transition-all duration-300"
+                      title={`Corporate BC Share: ${corporatePercent}%`}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] font-semibold">
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      CSP Share: {cspPercent}%
+                    </span>
+                    <span className="text-indigo-600 dark:text-indigo-400">
+                      Corporate BC Share: {corporatePercent}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Inputs (uniform) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      CSP Commission Share (%)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        value={cspPercent}
+                        onChange={(e) => {
+                          const val = Math.max(0, Math.min(100, Number(e.target.value)));
+                          setCspPercent(val);
+                        }}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold"
+                      />
+                      <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={cspPercent}
+                      onChange={(e) => setCspPercent(Number(e.target.value))}
+                      className="w-full mt-2 accent-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Corporate BC Share (%)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        disabled
+                        value={corporatePercent}
+                        className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold"
+                      />
+                      <span className="absolute right-3 top-2 text-xs font-bold text-slate-400">%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      Automatically balanced to equal 100% of raw bank commission
+                    </p>
+                  </div>
+                </div>
+
+                {/* Presets (uniform) */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                  <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
+                    Quick Ratio Presets:
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {presets.map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => setCspPercent(p.csp)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
+                          cspPercent === p.csp
+                            ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Calculation Preview (uniform) */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 text-xs space-y-1">
+                  <div className="font-semibold text-slate-700 dark:text-slate-300">
+                    Prorated Commission Calculation Example:
+                  </div>
+                  <div className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    On <span className="font-semibold text-slate-700 dark:text-slate-200">₹ 1,000.00</span> gross bank commission for{' '}
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                      {isAddingNew ? newTypeName || 'New Product' : selectedType}
+                    </span>:
+                    <div className="mt-1 font-mono flex items-center gap-3">
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        CSP: ₹ {((1000 * cspPercent) / 100).toFixed(2)} ({cspPercent}%)
+                      </span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-indigo-600 dark:text-indigo-400">
+                        Corporate BC: ₹ {((1000 * corporatePercent) / 100).toFixed(2)} ({corporatePercent}%)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Category-split editors */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mb-1">
+                      <MapPin className="w-3.5 h-3.5" /> Rural CSP Split %
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.5"
+                        value={ruralCspPercent}
+                        onChange={(e) => setRuralCspPercent(Math.max(0, Math.min(100, Number(e.target.value))))}
+                        className="w-full pr-8 pl-3 py-2 text-sm font-bold rounded-xl border border-emerald-500/40 dark:border-emerald-500/50 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">Corporate: {ruralCorp}%</p>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={ruralCspPercent}
+                      onChange={e => setRuralCspPercent(Number(e.target.value))}
+                      className="w-full mt-2 accent-emerald-500"
+                    />
+                    <div className="h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner mt-1">
+                      <div style={{ width: `${ruralCspPercent}%` }} className="bg-emerald-500 h-full transition-all" />
+                      <div style={{ width: `${ruralCorp}%` }} className="bg-indigo-600 h-full transition-all" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1">
+                      <Building2 className="w-3.5 h-3.5" /> Urban CSP Split %
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.5"
+                        value={urbanCspPercent}
+                        onChange={(e) => setUrbanCspPercent(Math.max(0, Math.min(100, Number(e.target.value))))}
+                        className="w-full pr-8 pl-3 py-2 text-sm font-bold rounded-xl border border-indigo-500/40 dark:border-indigo-500/50 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">Corporate: {urbanCorp}%</p>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={urbanCspPercent}
+                      onChange={e => setUrbanCspPercent(Number(e.target.value))}
+                      className="w-full mt-2 accent-indigo-500"
+                    />
+                    <div className="h-3 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex shadow-inner mt-1">
+                      <div style={{ width: `${urbanCspPercent}%` }} className="bg-emerald-500 h-full transition-all" />
+                      <div style={{ width: `${urbanCorp}%` }} className="bg-indigo-600 h-full transition-all" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60">
+                  <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
+                    Quick Ratio Presets (applies to both pools — then adjust per-category):
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {presets.map((p) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => { setRuralCspPercent(p.csp); setUrbanCspPercent(p.csp); }}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 text-xs space-y-1">
+                  <div className="font-semibold text-slate-700 dark:text-slate-300">Split Calculation Example</div>
+                  <div className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    On <span className="font-semibold text-slate-700 dark:text-slate-200">₹ 1,000</span> for{' '}
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">{isAddingNew ? newTypeName || 'New Product' : selectedType}</span>:
+                  </div>
+                  <div className="mt-1 space-y-1 font-mono text-[11px]">
+                    <div className="flex items-center gap-2"><span className="text-emerald-600 dark:text-emerald-400">Rural CSP: ₹ {((1000 * ruralCspPercent) / 100).toFixed(2)} ({ruralCspPercent}%)</span><span className="text-slate-300">|</span><span className="text-indigo-600 dark:text-indigo-400">BC: ₹ {((1000 * ruralCorp) / 100).toFixed(2)} ({ruralCorp}%)</span></div>
+                    <div className="flex items-center gap-2"><span className="text-emerald-600 dark:text-emerald-400">Urban CSP: ₹ {((1000 * urbanCspPercent) / 100).toFixed(2)} ({urbanCspPercent}%)</span><span className="text-slate-300">|</span><span className="text-indigo-600 dark:text-indigo-400">BC: ₹ {((1000 * urbanCorp) / 100).toFixed(2)} ({urbanCorp}%)</span></div>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Save Button */}
             <div className="pt-2 flex items-center justify-end gap-2">
@@ -530,15 +714,27 @@ export const ProductOverrideModal: React.FC<ProductOverrideModalProps> = ({
                         <div className="font-semibold text-slate-800 dark:text-slate-200 truncate">
                           {o.transactionType}
                         </div>
-                        <div className="text-[10px] text-slate-400">
-                          CSP: {o.cspPercent}% &bull; Corporate BC: {o.corporatePercent}%
-                        </div>
+                        {o.ruralCspPercent != null || o.urbanCspPercent != null ? (
+                          <div className="text-[10px] text-slate-400">
+                            Rural CSP: {o.ruralCspPercent ?? o.cspPercent}% / Urban CSP: {o.urbanCspPercent ?? o.cspPercent}%
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-400">
+                            CSP: {o.cspPercent}% &bull; Corporate BC: {o.corporatePercent}%
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900">
-                          {o.cspPercent} / {o.corporatePercent}
-                        </span>
+                        {o.ruralCspPercent != null || o.urbanCspPercent != null ? (
+                          <span className="font-mono font-bold text-[11px] text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900">
+                            R:{o.ruralCspPercent ?? o.cspPercent}% / U:{o.urbanCspPercent ?? o.cspPercent}%
+                          </span>
+                        ) : (
+                          <span className="font-mono font-bold text-xs text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900">
+                            {o.cspPercent} / {o.corporatePercent}
+                          </span>
+                        )}
 
                         <button
                           type="button"
