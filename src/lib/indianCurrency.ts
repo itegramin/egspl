@@ -205,6 +205,52 @@ export interface FormatCurrencyOptions {
 }
 
 /**
+ * Formats a number in Lakhs/Crores (landscape-friendly for KPI tiles).
+ *  - ≥ 1,00,00,000  →  "₹ 1.50 Cr" / "1.50 Cr"
+ *  - ≥ 1,00,000     →  "₹ 2.50 Lakhs" / "2.50 Lakhs"  (e.g. 250000 → 2.5 Lakhs)
+ *  - otherwise      →  full en-IN currency (₹ 45,500.00)
+ */
+export function formatCompactIndianCurrency(
+  amount: number | string | null | undefined,
+  options: FormatCurrencyOptions & { withScheme?: boolean } = {}
+): string {
+  if (amount === undefined || amount === null || amount === '') return '₹ 0.00';
+  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+  if (isNaN(num)) return '₹ 0.00';
+
+  const { showSymbol = true, decimals = 2, withScheme = true } = options;
+  const abs = Math.abs(num);
+  const sign = num < 0 ? '-' : '';
+  const fmt = (n: number, d: number) =>
+    Number(n.toFixed(d)).toLocaleString('en-IN', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+
+  if (abs >= 1e7) {
+    // Crores — keep exactly the compact convention used elsewhere when in that magnitude
+    const cr = abs / 1e7;
+    const label = cr >= 100 ? `${Number(cr.toFixed(2)).toLocaleString('en-IN')} Cr` : `${fmt(cr, 2)} Cr`;
+    return showSymbol ? `${sign}₹ ${label}` : withScheme ? `${label}` : `${sign}${label}`;
+  }
+  if (abs >= 1e5) {
+    const lakh = abs / 1e5;
+    // Strip trailing .00 for integer lakhs — e.g. 2.00 → "2.50 Lakhs", 1.00 → "1 Lakh"
+    const isInteger = Math.abs(lakh - Math.round(lakh)) < 0.005;
+    const pretty = isInteger ? String(Math.round(lakh)) : Number(lakh.toFixed(2)).toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    const unit = Math.abs(Number(pretty.replace(/,/g, '')) - 1) < 0.005 ? 'Lakh' : 'Lakhs';
+    const label = `${pretty} ${unit}`;
+    return showSymbol ? `${sign}₹ ${label}` : withScheme ? label : `${sign}${label}`;
+  }
+
+  const formatted = num.toLocaleString('en-IN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+  return showSymbol ? `₹ ${formatted}` : formatted;
+}
+
+/**
  * Formats a number in the Indian numbering system with ₹ symbol (e.g. ₹ 1,50,000.00).
  */
 export function formatIndianCurrency(

@@ -7,7 +7,7 @@ import {
   generateCommissionSummaryReportCsv,
 } from '../../lib/commissionCalculator';
 import { CspCommissionStatement, CommissionSplitConfig, TdsConfig, TransactionTypeDefinition } from '../../types/commission.type';
-import { formatIndianCurrency, formatAmountInWords } from '../../lib/indianCurrency';
+import { formatIndianCurrency, formatCompactIndianCurrency, formatAmountInWords } from '../../lib/indianCurrency';
 import { CommissionStatementModal } from './CommissionStatementModal';
 import { ImportCommissionModal } from './ImportCommissionModal';
 import { ProductOverrideModal } from './ProductOverrideModal';
@@ -125,8 +125,8 @@ export const CommissionView: React.FC = () => {
         r.year != null
           ? r.year
           : r.period && !isNaN(Number(r.period.split(' ')[1]))
-          ? Number(r.period.split(' ')[1])
-          : null;
+            ? Number(r.period.split(' ')[1])
+            : null;
       if (y) set.add(y);
     });
     const arr = Array.from(set).sort((a, b) => b - a);
@@ -657,11 +657,10 @@ export const CommissionView: React.FC = () => {
           <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
             <button
               onClick={() => setAdminTab('directory')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                adminTab === 'directory'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${adminTab === 'directory'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>CSP Statements Directory ({filteredStatements.length})</span>
@@ -669,11 +668,10 @@ export const CommissionView: React.FC = () => {
 
             <button
               onClick={() => setAdminTab('rules')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                adminTab === 'rules'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${adminTab === 'rules'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
             >
               <Sliders className="w-3.5 h-3.5" />
               <span>Split & TDS Configuration</span>
@@ -689,8 +687,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     TRANSACTION
                   </div>
-                  <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 mt-0.5 font-mono">
-                    {formatIndianCurrency(totals.transaction)}
+                  <div className="text-xs sm:text-base font-black text-slate-800 dark:text-slate-200 mt-0.5 font-mono" title={formatIndianCurrency(totals.transaction)}>
+                    {formatCompactIndianCurrency(totals.transaction)}
                   </div>
                 </div>
 
@@ -698,8 +696,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     INCENTIVES
                   </div>
-                  <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 mt-0.5 font-mono">
-                    {formatIndianCurrency(totals.incentives)}
+                  <div className="text-xs sm:text-base font-black text-slate-800 dark:text-slate-200 mt-0.5 font-mono" title={formatIndianCurrency(totals.incentives)}>
+                    {formatCompactIndianCurrency(totals.incentives)}
                   </div>
                 </div>
 
@@ -707,8 +705,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     RURAL
                   </div>
-                  <div className="text-sm sm:text-base font-black text-slate-800 dark:text-slate-200 mt-0.5 font-mono">
-                    {formatIndianCurrency(totals.rural)}
+                  <div className="text-xs sm:text-base font-black text-slate-800 dark:text-slate-200 mt-0.5 font-mono" title={formatIndianCurrency(totals.rural)}>
+                    {formatCompactIndianCurrency(totals.rural)}
                   </div>
                 </div>
 
@@ -716,8 +714,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                     TOTAL (GROSS)
                   </div>
-                  <div className="text-sm sm:text-base font-black text-slate-900 dark:text-white mt-0.5 font-mono">
-                    {formatIndianCurrency(totals.raw)}
+                  <div className="text-xs sm:text-base font-black text-slate-900 dark:text-white mt-0.5 font-mono" title={formatIndianCurrency(totals.raw)}>
+                    {formatCompactIndianCurrency(totals.raw)}
                   </div>
                 </div>
 
@@ -725,8 +723,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">
                     TDS (5%)
                   </div>
-                  <div className="text-sm sm:text-base font-black text-rose-600 dark:text-rose-400 mt-0.5 font-mono">
-                    - {formatIndianCurrency(totals.tds)}
+                  <div className="text-xs sm:text-base font-black text-rose-600 dark:text-rose-400 mt-0.5 font-mono" title={formatIndianCurrency(totals.tds)}>
+                    - {formatCompactIndianCurrency(totals.tds)}
                   </div>
                 </div>
 
@@ -734,8 +732,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                     PAYABLE TO CSP
                   </div>
-                  <div className="text-sm sm:text-base font-black text-indigo-700 dark:text-indigo-300 mt-0.5 font-mono">
-                    {formatIndianCurrency(totals.cspGross)}
+                  <div className="text-xs sm:text-base font-black text-indigo-700 dark:text-indigo-300 mt-0.5 font-mono" title={formatIndianCurrency(totals.cspGross)}>
+                    {formatCompactIndianCurrency(totals.cspGross)}
                   </div>
                 </div>
 
@@ -743,8 +741,8 @@ export const CommissionView: React.FC = () => {
                   <div className="text-[10px] font-black text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
                     NET PAYABLE
                   </div>
-                  <div className="text-sm sm:text-base font-black text-emerald-700 dark:text-emerald-400 mt-0.5 font-mono">
-                    {formatIndianCurrency(totals.net)}
+                  <div className="text-xs sm:text-base font-black text-emerald-700 dark:text-emerald-400 mt-0.5 font-mono" title={formatIndianCurrency(totals.net)}>
+                    {formatCompactIndianCurrency(totals.net)}
                   </div>
                 </div>
               </div>
@@ -865,12 +863,12 @@ export const CommissionView: React.FC = () => {
                           monthFilter !== 'all' && yearFilter !== 'all'
                             ? `${monthFilter}_${yearFilter}`
                             : yearFilter !== 'all'
-                            ? `Year_${yearFilter}`
-                            : monthFilter !== 'all'
-                            ? `Month_${monthFilter}`
-                            : periodFilter !== 'all'
-                            ? periodFilter.replace(/\s+/g, '_')
-                            : 'All_Reporting_Periods';
+                              ? `Year_${yearFilter}`
+                              : monthFilter !== 'all'
+                                ? `Month_${monthFilter}`
+                                : periodFilter !== 'all'
+                                  ? periodFilter.replace(/\s+/g, '_')
+                                  : 'All_Reporting_Periods';
                         link.download = `CSP_Commission_Summary_${reportPeriod}.csv`;
                         document.body.appendChild(link);
                         link.click();
@@ -948,11 +946,10 @@ export const CommissionView: React.FC = () => {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span>{s.cspName}</span>
                             <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                (s.cspCategory || 'rural').toLowerCase() === 'urban'
-                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
-                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                              }`}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${(s.cspCategory || 'rural').toLowerCase() === 'urban'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                }`}
                             >
                               {(s.cspCategory || 'rural').toUpperCase()}
                             </span>
@@ -1094,11 +1091,10 @@ export const CommissionView: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setDirPage(pageNum)}
-                                className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                                  dirPage === pageNum
-                                    ? 'bg-indigo-600 text-white shadow-xs'
-                                    : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                                }`}
+                                className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${dirPage === pageNum
+                                  ? 'bg-indigo-600 text-white shadow-xs'
+                                  : 'border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                  }`}
                               >
                                 {pageNum}
                               </button>
