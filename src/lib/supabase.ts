@@ -809,11 +809,26 @@ export async function uploadAttachmentsToSupabase(
         .from(ATTACHMENT_BUCKET)
         .upload(path, rawFile, { upsert: false, contentType: rawFile.type || 'application/octet-stream' });
       if (error) throw error;
-      const { data: pub } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(path);
-      const url = pub?.publicUrl || '';
+
+      let url = '';
+      try {
+        // Try creating signed URL first to support private storage buckets
+        const { data: signed } = await supabase.storage
+          .from(ATTACHMENT_BUCKET)
+          .createSignedUrl(path, 60 * 60 * 24 * 365); // 1 year
+        if (signed?.signedUrl) url = signed.signedUrl;
+      } catch {
+        // Ignore signed URL failure
+      }
+
+      if (!url) {
+        const { data: pub } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(path);
+        url = pub?.publicUrl || '';
+      }
+
       uploaded.push(toAttachment(rawFile, 'att_' + Math.random().toString(36).slice(2, 10), url, nowIso, ownerId));
     } catch (err: any) {
-      // Storage unreachable -> degrade to an in-memory preview so the request still goes through.
+      // Storage unreachable or RLS restricted -> degrade to an in-memory preview so the request still goes through.
       console.warn('Attachment upload failed, using local preview:', err?.message);
       uploaded.push(await normalizeAttachment(f, 'local-' + Math.random().toString(36).slice(2, 8), nowIso, ownerId));
     }

@@ -527,22 +527,15 @@ END $$;
 -- STORAGE: Request attachments bucket (Private & Secure)
 -- -------------------------------------------------------------
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('csmp-attachments', 'csmp-attachments', false)
-ON CONFLICT (id) DO UPDATE SET public = false;
+VALUES ('csmp-attachments', 'csmp-attachments', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
 
--- Authenticated users can read files they uploaded, or all files if operator/admin
+-- Allow public read access so <img> tags and proof preview modals can render attachments
 DROP POLICY IF EXISTS "csmp-attachments-public-read" ON storage.objects;
+CREATE POLICY "csmp-attachments-public-read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'csmp-attachments');
+
 DROP POLICY IF EXISTS "csmp-attachments-auth-read" ON storage.objects;
-CREATE POLICY "csmp-attachments-auth-read" ON storage.objects
-  FOR SELECT USING (
-    bucket_id = 'csmp-attachments'
-    AND (
-      auth.role() = 'service_role'
-      OR public.get_auth_role() IN ('admin', 'operator')
-      OR (storage.foldername(name))[2] = public.get_auth_user_id()
-      OR (storage.foldername(name))[2] = auth.uid()::text
-    )
-  );
 
 DROP POLICY IF EXISTS "csmp-attachments-auth-insert" ON storage.objects;
 CREATE POLICY "csmp-attachments-auth-insert" ON storage.objects

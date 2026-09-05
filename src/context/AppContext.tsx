@@ -837,7 +837,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       assignedOperatorId: primaryHandler.id,
       assignedOperatorName: combinedOperatorName,
       assignedHandlers: resolvedHandlers,
-      status: 'in_progress' as const,
+      status: req.status || ('pending' as const),
     };
 
     // For limit (withdraw / CMA) requests also assign all configured authorizers

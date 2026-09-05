@@ -11,6 +11,7 @@ import {
   getRequestHandlers,
   getRequestAuthorizers,
   isUserAssignedAuthorizer,
+  Attachment,
 } from '../../types';
 import { AmountInWords } from '../common/AmountInWords';
 import { StatusBadge, PriorityBadge, TypeBadge, RoleBadge, DeletionPendingBadge } from '../common/Badge';
@@ -39,8 +40,122 @@ import {
   Download,
   AlertTriangle,
   Eye,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+interface AttachmentItemProps {
+  att: Attachment;
+  req: ServiceRequest;
+  onPreview: (url: string, title?: string) => void;
+}
+
+const AttachmentItem: React.FC<AttachmentItemProps> = ({ att, req, onPreview }) => {
+  const [hasError, setHasError] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  const isImage = Boolean(
+    (att.type && typeof att.type === 'string' && att.type.startsWith('image/')) ||
+    att.url?.startsWith('data:image') ||
+    att.url?.includes('images.unsplash') ||
+    /\.(jpe?g|png|gif|webp|svg|bmp|heic|heif|avif)(\?|$)/i.test(att.url || '') ||
+    /\.(jpe?g|png|gif|webp|svg|bmp|heic|heif|avif)$/i.test(att.name || '')
+  );
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const link = document.createElement('a');
+    link.href = att.url;
+    link.download = att.name || 'attachment';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div
+      onClick={() => onPreview(att.url, att.name)}
+      className="group relative p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50 dark:bg-slate-800/70 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer overflow-hidden flex flex-col justify-between"
+    >
+      {/* Thumbnail Area */}
+      {isImage && !hasError ? (
+        <div className="relative h-28 w-full rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-900/60 flex items-center justify-center">
+          {!isLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400">
+              <ImageIcon className="w-5 h-5 animate-pulse text-indigo-400" />
+            </div>
+          )}
+          <img
+            src={att.url}
+            alt={att.name}
+            onLoad={() => setIsLoaded(true)}
+            onError={() => setHasError(true)}
+            className={`w-full h-full object-cover group-hover:scale-105 transition-all duration-300 ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+          />
+          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[1px]">
+            <Eye className="w-5 h-5 text-white drop-shadow-md" />
+          </div>
+        </div>
+      ) : isImage && hasError ? (
+        /* Fallback Digital Counterfoil when remote storage object is missing / 404 */
+        <div className="h-28 w-full rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/20 border border-amber-200/70 dark:border-amber-800/50 p-2 flex flex-col justify-between text-left">
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-wider text-amber-700 dark:text-amber-400 uppercase bg-amber-100/90 dark:bg-amber-900/60 px-1.5 py-0.5 rounded">
+              <ShieldCheck className="w-3 h-3" /> Slip Proof
+            </span>
+            <span className="text-[9px] font-mono text-slate-400">
+              {req.ticketNumber}
+            </span>
+          </div>
+          <div className="py-1">
+            <div className="text-[11px] font-bold text-slate-800 dark:text-slate-200 line-clamp-1">
+              {(req as any).amount ? `₹ ${(req as any).amount.toLocaleString()}` : req.title}
+            </div>
+            <div className="text-[9px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <Clock className="w-2.5 h-2.5 shrink-0" />
+              <span>Storage Link Offline</span>
+            </div>
+          </div>
+          <div className="flex items-center justify-between text-[9px] text-slate-400 pt-1 border-t border-amber-200/40 dark:border-amber-800/30">
+            <span className="truncate max-w-[85px]">{req.clientName}</span>
+            <span className="font-semibold text-indigo-600 dark:text-indigo-400">Inspect</span>
+          </div>
+        </div>
+      ) : (
+        /* PDF Document */
+        <div className="h-28 w-full rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center p-2 text-center border border-indigo-100 dark:border-indigo-900/40">
+          <FileCheck className="w-8 h-8 mb-1 text-indigo-500" />
+          <span className="text-[11px] font-bold font-mono">PDF Document</span>
+          <span className="text-[9px] text-slate-400 mt-0.5">Click to preview</span>
+        </div>
+      )}
+
+      {/* Metadata & Actions */}
+      <div className="mt-2 flex items-start justify-between gap-1">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate" title={att.name}>
+            {att.name}
+          </p>
+          <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
+            <span>{(att.size / 1024).toFixed(0)} KB</span>
+            <span>•</span>
+            <span className="truncate">{att.uploadedBy}</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-200/70 dark:hover:bg-slate-700 transition-colors shrink-0"
+          title="Download Attachment"
+        >
+          <Download className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export const RequestDetailModal: React.FC = () => {
   const {
@@ -65,6 +180,8 @@ export const RequestDetailModal: React.FC = () => {
   const [statusChangeNote, setStatusChangeNote] = useState('');
   const [verifiedTxIdInput, setVerifiedTxIdInput] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [previewTitle, setPreviewTitle] = useState<string>('Proof Attachment');
+  const [previewHasError, setPreviewHasError] = useState<boolean>(false);
   const [showThread, setShowThread] = useState(false);
   const [isConfiguring, setIsConfiguring] = useState(false);
   const [authorizedAmountInput, setAuthorizedAmountInput] = useState<number | string>('');
@@ -1019,38 +1136,16 @@ export const RequestDetailModal: React.FC = () => {
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {req.attachments.map((att) => (
-                      <div
+                      <AttachmentItem
                         key={att.id}
-                        onClick={() => setPreviewImage(att.url)}
-                        className="group relative p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 hover:border-indigo-500 transition-all cursor-pointer overflow-hidden"
-                      >
-                        {att.type.startsWith('image/') || att.url.startsWith('data:image') || att.url.includes('images.unsplash') ? (
-                          <div className="relative h-24 rounded-lg overflow-hidden bg-slate-100">
-                            <img
-                              src={att.url}
-                              alt={att.name}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                            />
-                            <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                              <Eye className="w-5 h-5 text-white" />
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="h-24 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center p-2 text-center">
-                            <FileCheck className="w-8 h-8 mb-1" />
-                            <span className="text-[10px] font-mono">PDF Document</span>
-                          </div>
-                        )}
-                        <div className="mt-2">
-                          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                            {att.name}
-                          </p>
-                          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
-                            <span>{(att.size / 1024).toFixed(0)} KB</span>
-                            <span>{att.uploadedBy}</span>
-                          </div>
-                        </div>
-                      </div>
+                        att={att}
+                        req={req}
+                        onPreview={(url, title) => {
+                          setPreviewImage(url);
+                          setPreviewTitle(title || att.name);
+                          setPreviewHasError(false);
+                        }}
+                      />
                     ))}
                   </div>
                 </div>
@@ -1324,21 +1419,69 @@ export const RequestDetailModal: React.FC = () => {
         {/* Full Image Preview Zoom Modal */}
         {previewImage && (
           <div
-            className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center p-4"
+            className="fixed inset-0 z-60 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
             onClick={() => setPreviewImage(null)}
           >
-            <div className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-xl bg-slate-900 p-2">
-              <img
-                src={previewImage}
-                alt="Enlarged proof"
-                className="max-h-[85vh] max-w-full object-contain mx-auto rounded"
-              />
-              <button
-                onClick={() => setPreviewImage(null)}
-                className="absolute top-4 right-4 p-2 rounded-full bg-slate-900/80 text-white hover:bg-slate-800"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div
+              className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-2xl bg-slate-900 border border-slate-800 p-3 shadow-2xl flex flex-col items-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Top Bar */}
+              <div className="w-full flex items-center justify-between pb-2 mb-2 border-b border-slate-800 text-white text-xs">
+                <div className="flex items-center gap-2 truncate pr-4">
+                  <Paperclip className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span className="font-semibold truncate">{previewTitle}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={previewImage}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors flex items-center gap-1 text-[11px]"
+                    title="Open full size in new window"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open</span>
+                  </a>
+                  <button
+                    onClick={() => setPreviewImage(null)}
+                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-600/80 text-slate-300 hover:text-white transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview Body */}
+              {previewHasError ? (
+                <div className="p-8 text-center text-slate-300 flex flex-col items-center gap-3 my-auto max-w-md">
+                  <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Attachment Preview Unavailable</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      The remote storage file could not be loaded directly (HTTP 404 / bucket restricted). You can try opening the direct link below.
+                    </p>
+                  </div>
+                  <a
+                    href={previewImage}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-lg transition-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>Open Remote Storage Link</span>
+                  </a>
+                </div>
+              ) : (
+                <img
+                  src={previewImage}
+                  alt="Enlarged proof"
+                  onError={() => setPreviewHasError(true)}
+                  className="max-h-[80vh] max-w-full object-contain mx-auto rounded-lg"
+                />
+              )}
             </div>
           </div>
         )}

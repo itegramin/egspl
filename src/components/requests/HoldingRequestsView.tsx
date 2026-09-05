@@ -101,6 +101,7 @@ export const HoldingRequestsView: React.FC = () => {
   );
 
   // Client view: All own requests (assigned or unassigned). Staff view: Only assigned requests.
+  // For the "All" tab, completed/rejected are included. For Deposits/Withdrawals tabs they are excluded.
   const assignedHoldingReqs = useMemo(() => {
     return requests.filter((r): r is HoldingRequest => {
       if (r.type !== 'deposit' && r.type !== 'withdraw') return false;
@@ -130,16 +131,20 @@ export const HoldingRequestsView: React.FC = () => {
             (assignmentConfig.rules.limit.authorizers?.length || assignmentConfig.rules.limit.authorizerId))
         );
 
-      // Staff: Must be an assigned request and not yet completed/rejected
+      // Staff: Must be an assigned request (completed/rejected are still included for the All tab)
       if (!hasOp && !hasAuth) return false;
-      if (r.status === 'completed' || r.status === 'rejected') return false;
 
       return true;
     });
   }, [requests, user, assignmentConfig]);
 
-  const deposits = assignedHoldingReqs.filter(r => r.type === 'deposit') as HoldingDepositRequest[];
-  const withdrawals = assignedHoldingReqs.filter(r => r.type === 'withdraw') as HoldingWithdrawRequest[];
+  // Deposits and Withdrawals tabs only show open (non-completed/rejected) requests
+  const deposits = assignedHoldingReqs.filter(
+    r => r.type === 'deposit' && r.status !== 'completed' && r.status !== 'rejected'
+  ) as HoldingDepositRequest[];
+  const withdrawals = assignedHoldingReqs.filter(
+    r => r.type === 'withdraw' && r.status !== 'completed' && r.status !== 'rejected'
+  ) as HoldingWithdrawRequest[];
 
   const totalDepositUSD = deposits.reduce((acc, c) => acc + (c.amount || 0), 0);
   const totalWithdrawUSD = withdrawals.reduce((acc, c) => acc + (c.amount || 0), 0);
@@ -196,6 +201,8 @@ export const HoldingRequestsView: React.FC = () => {
       // Tab filter
       if (activeTab === 'deposits' && r.type !== 'deposit') return false;
       if (activeTab === 'withdrawals' && r.type !== 'withdraw') return false;
+      // Deposits/Withdrawals tabs only show open requests; completed/rejected only show in All tab
+      if ((activeTab === 'deposits' || activeTab === 'withdrawals') && (r.status === 'completed' || r.status === 'rejected')) return false;
 
       // Status filter
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
