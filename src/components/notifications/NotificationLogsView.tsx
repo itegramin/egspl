@@ -31,6 +31,7 @@ import {
   ChevronDown,
   Clock,
 } from 'lucide-react';
+import { DownloadModal } from '../requests/DownloadModal';
 
 export const NotificationLogsView: React.FC = () => {
   const {
@@ -56,6 +57,7 @@ export const NotificationLogsView: React.FC = () => {
   const [readFilter, setReadFilter] = useState<string>('all');
   const [dateRangeFilter, setDateRangeFilter] = useState<string>('all');
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   // Broadcast form state (admin only)
   const [broadcastTitle, setBroadcastTitle] = useState('');
@@ -285,12 +287,13 @@ export const NotificationLogsView: React.FC = () => {
           )}
 
           <button
-            onClick={handleExportCSV}
-            disabled={filteredNotifications.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors shadow-xs"
+            id="download-notification-logs-btn"
+            onClick={() => setIsDownloadModalOpen(true)}
+            disabled={sourceNotifications.length === 0}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors shadow-xs cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            <span>Export CSV</span>
+            <Download className="w-4 h-4 text-slate-400" />
+            <span>Download</span>
           </button>
         </div>
       </div>
@@ -790,6 +793,14 @@ export const NotificationLogsView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Download Modal */}
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        viewType="notifications"
+        data={sourceNotifications}
+        currentUserRole={user?.role}
+      />
     </div>
   );
 };

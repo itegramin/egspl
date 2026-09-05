@@ -27,7 +27,10 @@ import type {
   RequestStatus,
   RequestPriority,
   PageId,
+  AssignmentConfig,
+  TypeWiseAssignmentRule,
 } from '../types/app.type';
+import { getRuleHandlers, getRuleAuthorizers } from '../types/app.type';
 
 const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey: string =
@@ -199,6 +202,16 @@ export function mapDbRequest(row: DbRequest | any): ServiceRequest {
     assignedOperatorName: row.assigned_operator_name || undefined,
     assignedAuthorizerId: (row as any).assigned_authorizer_id || undefined,
     assignedAuthorizerName: (row as any).assigned_authorizer_name || undefined,
+    assignedHandlers: Array.isArray((row as any).assigned_handlers)
+      ? (row as any).assigned_handlers
+      : (row.cma_status?.handlers && Array.isArray(row.cma_status.handlers)
+        ? row.cma_status.handlers
+        : (row.assigned_operator_id ? [{ id: row.assigned_operator_id, name: row.assigned_operator_name || 'Assigned Operator' }] : undefined)),
+    assignedAuthorizers: Array.isArray((row as any).assigned_authorizers)
+      ? (row as any).assigned_authorizers
+      : (row.cma_status?.authorizers && Array.isArray(row.cma_status.authorizers)
+        ? row.cma_status.authorizers
+        : ((row as any).assigned_authorizer_id ? [{ id: (row as any).assigned_authorizer_id, name: (row as any).assigned_authorizer_name || 'Assigned Authorizer' }] : undefined)),
     rejectionReason: (row as any).rejection_reason || undefined,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
@@ -288,10 +301,14 @@ export function mapRequestToDb(req: ServiceRequest): DbRequestInsert {
     client_email: req.clientEmail,
     client_company: req.clientCompany || null,
     kiosk_id: (req as any).kioskId || null,
-    assigned_operator_id: req.assignedOperatorId || null,
-    assigned_operator_name: req.assignedOperatorName || null,
-    assigned_authorizer_id: (req as any).assignedAuthorizerId || null,
-    assigned_authorizer_name: (req as any).assignedAuthorizerName || null,
+    assigned_operator_id: req.assignedHandlers?.[0]?.id || req.assignedOperatorId || null,
+    assigned_operator_name: (req.assignedHandlers && req.assignedHandlers.length > 0)
+      ? req.assignedHandlers.map(h => h.name).join(', ')
+      : (req.assignedOperatorName || null),
+    assigned_authorizer_id: (req as any).assignedAuthorizers?.[0]?.id || (req as any).assignedAuthorizerId || null,
+    assigned_authorizer_name: ((req as any).assignedAuthorizers && (req as any).assignedAuthorizers.length > 0)
+      ? (req as any).assignedAuthorizers.map((a: any) => a.name).join(', ')
+      : ((req as any).assignedAuthorizerName || null),
     rejection_reason: req.rejectionReason || null,
     attachments: (req.attachments || []) as any,
     comments: ((req.comments || []).map((c: any) => {
@@ -345,7 +362,14 @@ export function mapRequestToDb(req: ServiceRequest): DbRequestInsert {
     dbReq.bank_ifsc = wReq.swiftOrIban || null;
     dbReq.reason = wReq.reason || null;
     dbReq.transfer_receipt_ref = wReq.transferReceiptRef || null;
-    dbReq.cma_status = (wReq.cmaStatus || null) as any;
+    const cmaPayload = wReq.cmaStatus ? { ...wReq.cmaStatus } : {};
+    if (wReq.assignedHandlers && wReq.assignedHandlers.length > 0) {
+      cmaPayload.handlers = wReq.assignedHandlers;
+    }
+    if (wReq.assignedAuthorizers && wReq.assignedAuthorizers.length > 0) {
+      cmaPayload.authorizers = wReq.assignedAuthorizers;
+    }
+    dbReq.cma_status = Object.keys(cmaPayload).length > 0 ? cmaPayload : null;
     dbReq.authorized_amount = wReq.authorizedAmount || wReq.cmaStatus?.authorizedAmount || null;
   }
 
@@ -573,6 +597,65 @@ export async function savePermissionsToSupabase(_role: UserRole, _perms: RolePer
   // Hardcoded permissions array used - no-op for database writes
 }
 
+function normalizeAssignmentRule(rule: any): TypeWiseAssignmentRule | null {
+  if (!rule) return null;
+  const handlers = getRuleHandlers(rule);
+  const authorizers = getRuleAuthorizers(rule);
+  return {
+    ...rule,
+    operatorId: handlers[0]?.id || rule.operatorId || '',
+    operatorName: handlers[0]?.name || rule.operatorName || '',
+    handlers,
+    authorizerId: authorizers[0]?.id || rule.authorizerId || undefined,
+    authorizerName: authorizers[0]?.name || rule.authorizerName || undefined,
+    authorizers,
+  };
+}
+
+export async function fetchAssignmentConfigFromSupabase(): Promise<AssignmentConfig | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase
+      .from('csmp_settings')
+      .select('value')
+      .eq('key', 'assignment_config')
+      .maybeSingle();
+
+    if (error || !data?.value) return null;
+    const rawConfig = data.value as AssignmentConfig;
+    return {
+      autoAssignmentEnabled: Boolean(rawConfig.autoAssignmentEnabled),
+      rules: {
+        limit: normalizeAssignmentRule(rawConfig.rules?.limit),
+        support: normalizeAssignmentRule(rawConfig.rules?.support),
+        deposit: normalizeAssignmentRule(rawConfig.rules?.deposit),
+      },
+    };
+  } catch (err: any) {
+    console.warn('[Auto-Assign] Could not fetch assignment config from Supabase:', err?.message || err);
+    return null;
+  }
+}
+
+export async function saveAssignmentConfigToSupabase(config: AssignmentConfig): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    const { error } = await supabase.from('csmp_settings').upsert({
+      key: 'assignment_config',
+      value: config,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    if (error) {
+      console.error('[Auto-Assign] Failed to persist assignment config to Supabase:', error.message, error.details || '');
+      throw error;
+    }
+  } catch (err: any) {
+    console.warn('[Auto-Assign] Could not persist assignment config to Supabase:', err?.message || err);
+    throw err;
+  }
+}
+
 
 export async function fetchNotificationsFromSupabase(): Promise<Notification[]> {
   const { data, error } = await supabase.from('csmp_notifications').select('*').order('created_at', { ascending: false });
@@ -726,11 +809,26 @@ export async function uploadAttachmentsToSupabase(
         .from(ATTACHMENT_BUCKET)
         .upload(path, rawFile, { upsert: false, contentType: rawFile.type || 'application/octet-stream' });
       if (error) throw error;
-      const { data: pub } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(path);
-      const url = pub?.publicUrl || '';
+
+      let url = '';
+      try {
+        // Try creating signed URL first to support private storage buckets
+        const { data: signed } = await supabase.storage
+          .from(ATTACHMENT_BUCKET)
+          .createSignedUrl(path, 60 * 60 * 24 * 365); // 1 year
+        if (signed?.signedUrl) url = signed.signedUrl;
+      } catch {
+        // Ignore signed URL failure
+      }
+
+      if (!url) {
+        const { data: pub } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(path);
+        url = pub?.publicUrl || '';
+      }
+
       uploaded.push(toAttachment(rawFile, 'att_' + Math.random().toString(36).slice(2, 10), url, nowIso, ownerId));
     } catch (err: any) {
-      // Storage unreachable -> degrade to an in-memory preview so the request still goes through.
+      // Storage unreachable or RLS restricted -> degrade to an in-memory preview so the request still goes through.
       console.warn('Attachment upload failed, using local preview:', err?.message);
       uploaded.push(await normalizeAttachment(f, 'local-' + Math.random().toString(36).slice(2, 8), nowIso, ownerId));
     }

@@ -16,6 +16,14 @@ import {
   FilterState,
   UserRole,
   AssignmentConfig,
+  HandlerMember,
+  getRuleHandlers,
+  getRuleAuthorizers,
+  getRequestHandlers,
+  getRequestAuthorizers,
+  isUserAssignedHandler,
+  isUserAssignedAuthorizer,
+  isUserAssignedToRequest,
   GlobalNotice,
 } from '../types';
 import {
@@ -56,6 +64,8 @@ import {
   generateTicketNumber,
   queueRequestForRetry,
   flushPendingRequestSync,
+  fetchAssignmentConfigFromSupabase,
+  saveAssignmentConfigToSupabase,
 } from '../lib/supabase';
 import { ThemeConfig, getStoredTheme, applyTheme, DEFAULT_THEME } from '../lib/theme';
 import { useAuth } from './AuthContext';
@@ -364,8 +374,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateAssignmentConfig = (updates: Partial<AssignmentConfig>) => {
     setAssignmentConfig(prev => {
-      const next = { ...prev, ...updates, rules: { ...prev.rules, ...(updates.rules || {}) } };
+      const nextRules = updates.rules !== undefined ? { ...prev.rules, ...updates.rules } : prev.rules;
+      const next: AssignmentConfig = {
+        ...prev,
+        ...updates,
+        rules: nextRules,
+      };
       saveAssignmentConfig(next);
+
+      // Persist to Supabase if configured
+      saveAssignmentConfigToSupabase(next).catch(() => {});
+
+      // Broadcast across tabs on the same device via BroadcastChannel
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        try {
+          const bc = new BroadcastChannel('csmp_live_sync');
+          bc.postMessage({ type: 'ASSIGNMENT_CONFIG_UPDATED', payload: next });
+          bc.close();
+        } catch { /* ignore */ }
+      }
+
       return next;
     });
   };
@@ -447,10 +475,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsSupabaseConnected(health.connected);
 
       if (health.connected) {
-        const [dbReqs, dbNotifs, dbAudit] = await Promise.all([
+        const [dbReqs, dbNotifs, dbAudit, dbAssignmentConfig] = await Promise.all([
           fetchRequestsFromSupabase().catch(() => null),
           fetchNotificationsFromSupabase().catch(() => null),
           fetchAuditLogsFromSupabase().catch(() => null),
+          fetchAssignmentConfigFromSupabase().catch(() => null),
         ]);
 
         if (dbReqs && dbReqs.length > 0) {
@@ -464,6 +493,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbAudit && dbAudit.length > 0) {
           setAuditLogs(dbAudit);
           saveAuditLogs(dbAudit);
+        }
+        if (dbAssignmentConfig) {
+          setAssignmentConfig(dbAssignmentConfig);
+          saveAssignmentConfig(dbAssignmentConfig);
         }
       }
     } catch (err: any) {
@@ -519,6 +552,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             savePermissions(next);
             return next;
           });
+        } else if (event.data?.type === 'ASSIGNMENT_CONFIG_UPDATED' && event.data?.payload) {
+          // Another tab updated assignment rules — sync into state and storage
+          const incomingConfig = event.data.payload as AssignmentConfig;
+          setAssignmentConfig(incomingConfig);
+          saveAssignmentConfig(incomingConfig);
         }
       };
     }
@@ -603,6 +641,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             saveAuditLogs(dbAudit);
           }
         }).catch(() => { });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'csmp_settings' }, (payload: any) => {
+        if (payload?.new && payload.new.key === 'assignment_config') {
+          fetchAssignmentConfigFromSupabase().then(latestConfig => {
+            if (latestConfig) {
+              setAssignmentConfig(latestConfig);
+              saveAssignmentConfig(latestConfig);
+            }
+          }).catch(() => { });
+        }
       })
       .subscribe();
 
@@ -760,23 +808,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ── Auto-assignment helper ──────────────────────────────────────────────────
   // Applies the type-wise rule from assignmentConfig to a freshly created request.
-  // Returns a (possibly patched) copy of the request.
+  // When multiple handlers are configured, assigns to the handler with the lowest
+  // active workload (open tickets count).
   const autoAssignRequest = <T extends ServiceRequest>(req: T, type: 'support' | 'deposit' | 'limit'): T => {
     if (!assignmentConfig.autoAssignmentEnabled) return req;
     const rule = assignmentConfig.rules[type];
     if (!rule) return req;
 
+    const handlers = getRuleHandlers(rule);
+    if (handlers.length === 0) return req;
+
+    // Resolve all handler details from pool
+    const resolvedHandlers: HandlerMember[] = handlers.map(h => {
+      const opUser = allUsers.find(u => u.id === h.id);
+      return {
+        id: h.id.trim(),
+        name: (h.name && h.name.trim()) || opUser?.name || 'Assigned Operator',
+        role: h.role || opUser?.role,
+        email: h.email || opUser?.email,
+      };
+    });
+
+    const primaryHandler = resolvedHandlers[0];
+    const combinedOperatorName = resolvedHandlers.map(h => h.name).join(', ');
+
     const patched: T = {
       ...req,
-      assignedOperatorId: rule.operatorId,
-      assignedOperatorName: rule.operatorName,
-      status: 'in_progress' as const,
+      assignedOperatorId: primaryHandler.id,
+      assignedOperatorName: combinedOperatorName,
+      assignedHandlers: resolvedHandlers,
+      status: req.status || ('pending' as const),
     };
 
-    // For limit (CMA) requests also assign the authorizer
-    if (type === 'limit' && rule.authorizerId) {
-      (patched as any).assignedAuthorizerId = rule.authorizerId;
-      (patched as any).assignedAuthorizerName = rule.authorizerName || '';
+    // For limit (withdraw / CMA) requests also assign all configured authorizers
+    if (type === 'limit') {
+      const authorizers = getRuleAuthorizers(rule);
+      if (authorizers.length > 0) {
+        const resolvedAuthorizers: HandlerMember[] = authorizers.map(a => {
+          const authUser = allUsers.find(u => u.id === a.id);
+          return {
+            id: a.id.trim(),
+            name: (a.name && a.name.trim()) || authUser?.name || 'Assigned Authorizer',
+            role: a.role || authUser?.role,
+            email: a.email || authUser?.email,
+          };
+        });
+
+        const primaryAuth = resolvedAuthorizers[0];
+        const combinedAuthName = resolvedAuthorizers.map(a => a.name).join(', ');
+
+        (patched as any).assignedAuthorizerId = primaryAuth.id;
+        (patched as any).assignedAuthorizerName = combinedAuthName;
+        (patched as any).assignedAuthorizers = resolvedAuthorizers;
+
+        // Also embed inside cmaStatus so it is preserved in existing cma_status JSONB column
+        const currentCma = (patched as any).cmaStatus || {};
+        (patched as any).cmaStatus = {
+          ...currentCma,
+          handlers: resolvedHandlers,
+          authorizers: resolvedAuthorizers,
+          authorizerId: primaryAuth.id,
+          authorizerName: combinedAuthName,
+        };
+      }
     }
 
     return patched;
@@ -863,6 +957,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       data.priority === 'urgent' ? 'warning' : 'info',
       assignedTicket.id
     );
+
+    // 3. Direct notification to all assigned operators
+    const supportHandlers = assignedTicket.assignedHandlers || (assignedTicket.assignedOperatorId ? [{ id: assignedTicket.assignedOperatorId, name: assignedTicket.assignedOperatorName || '' }] : []);
+    supportHandlers.forEach(h => {
+      dispatchNotification(
+        h.id,
+        `Assigned to ${ticketNumber}`,
+        `Support ticket "${data.title}" submitted by ${user.name} was automatically assigned to you.`,
+        'assignment',
+        data.priority === 'urgent' ? 'warning' : 'info',
+        assignedTicket.id
+      );
+    });
 
     toast(`Support ticket ${ticketNumber} submitted successfully!`, 'success');
     return assignedTicket;
@@ -959,6 +1066,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'warning',
       assignedDeposit.id
     );
+
+    // 3. Direct notification to all assigned operators
+    const depHandlers = assignedDeposit.assignedHandlers || (assignedDeposit.assignedOperatorId ? [{ id: assignedDeposit.assignedOperatorId, name: assignedDeposit.assignedOperatorName || '' }] : []);
+    depHandlers.forEach(h => {
+      dispatchNotification(
+        h.id,
+        `Assigned to ${ticketNumber}`,
+        `Deposit confirmation request for ${data.currency} ${data.amount.toLocaleString()} submitted by ${user.name} was automatically assigned to you.`,
+        'assignment',
+        'info',
+        assignedDeposit.id
+      );
+    });
 
     toast(`Deposit update request ${ticketNumber} logged. Operator will verify transaction.`, 'success');
     return assignedDeposit;
@@ -1061,6 +1181,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'warning',
       assignedWithdraw.id
     );
+
+    // 3. Direct notification to all assigned maker operators
+    const withdrawHandlers = assignedWithdraw.assignedHandlers || (assignedWithdraw.assignedOperatorId ? [{ id: assignedWithdraw.assignedOperatorId, name: assignedWithdraw.assignedOperatorName || '' }] : []);
+    withdrawHandlers.forEach(h => {
+      dispatchNotification(
+        h.id,
+        `Assigned as Maker: ${ticketNumber}`,
+        `Withdrawal request for ${data.currency} ${data.amount.toLocaleString()} submitted by ${user.name} was automatically assigned to you.`,
+        'assignment',
+        'info',
+        assignedWithdraw.id
+      );
+    });
+
+    // 4. Direct notification to all assigned authorizers
+    const withdrawAuths = (assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizers ||
+      ((assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId
+        ? [{ id: (assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerId!, name: (assignedWithdraw as HoldingWithdrawRequest).assignedAuthorizerName || '' }]
+        : []);
+    withdrawAuths.forEach(a => {
+      dispatchNotification(
+        a.id,
+        `Assigned as Authorizer: ${ticketNumber}`,
+        `Withdrawal request for ${data.currency} ${data.amount.toLocaleString()} submitted by ${user.name} requires your authorization.`,
+        'assignment',
+        'warning',
+        assignedWithdraw.id
+      );
+    });
 
     toast(`Withdrawal request ${ticketNumber} submitted for compliance approval.`, 'success');
     return assignedWithdraw;
@@ -1190,33 +1339,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reqItem.id
       );
 
-      // 2. Notify the assigned operator (Maker) — only if they are not the one performing this action
-      if (reqItem.assignedOperatorId && reqItem.assignedOperatorId !== user.id) {
-        dispatchNotification(
-          reqItem.assignedOperatorId,
-          staffTitle,
-          staffMsg,
-          'request_update',
-          isApproved ? 'success' : isRejected ? 'error' : 'info',
-          reqItem.id
-        );
-      }
+      // 2. Notify all assigned operators (Makers) — only if they are not the actor
+      const ruleForType = assignmentConfig.rules[reqItem.type === 'withdraw' ? 'limit' : reqItem.type];
+      const allItemHandlers = getRequestHandlers(reqItem, ruleForType);
+      allItemHandlers.forEach(h => {
+        if (h.id !== user.id) {
+          dispatchNotification(
+            h.id,
+            staffTitle,
+            staffMsg,
+            'request_update',
+            isApproved ? 'success' : isRejected ? 'error' : 'info',
+            reqItem.id
+          );
+        }
+      });
 
-      // 3. Notify the assigned authorizer — only if different from actor and operator
-      if (
-        (reqItem as any).assignedAuthorizerId &&
-        (reqItem as any).assignedAuthorizerId !== user.id &&
-        (reqItem as any).assignedAuthorizerId !== reqItem.assignedOperatorId
-      ) {
-        dispatchNotification(
-          (reqItem as any).assignedAuthorizerId,
-          staffTitle,
-          staffMsg,
-          'request_update',
-          isApproved ? 'success' : isRejected ? 'error' : 'info',
-          reqItem.id
-        );
-      }
+      // 3. Notify all assigned authorizers — only if different from actor
+      const allItemAuths = getRequestAuthorizers(reqItem, assignmentConfig.rules.limit);
+      allItemAuths.forEach(a => {
+        if (a.id !== user.id && !allItemHandlers.some(h => h.id === a.id)) {
+          dispatchNotification(
+            a.id,
+            staffTitle,
+            staffMsg,
+            'request_update',
+            isApproved ? 'success' : isRejected ? 'error' : 'info',
+            reqItem.id
+          );
+        }
+      });
 
       if (newStatus === 'completed') {
         try {
@@ -1276,10 +1428,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return;
         }
 
-        // Only the assigned authorizer (or admin) can authorize
-        const isAuthorizedStaff = target.assignedAuthorizerId
-          ? target.assignedAuthorizerId === user.id || user.role === 'admin'
-          : user.role === 'admin';
+        // Only designated authorizer(s) (or admin) can authorize
+        const isAuthorizedStaff =
+          user.role === 'admin' ||
+          isUserAssignedAuthorizer(target, user.id, assignmentConfig.rules.limit);
 
         if (!isAuthorizedStaff) {
           toast(
@@ -2047,9 +2199,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Operator filter
     if (filters.operatorFilter !== 'all') {
       if (filters.operatorFilter === 'unassigned') {
-        if (req.assignedOperatorId) return false;
-      } else if (req.assignedOperatorId !== filters.operatorFilter) {
-        return false;
+        if (req.assignedOperatorId || (req.assignedHandlers && req.assignedHandlers.length > 0)) return false;
+      } else {
+        const ruleForType = assignmentConfig.rules[req.type === 'withdraw' ? 'limit' : req.type];
+        if (!isUserAssignedHandler(req, filters.operatorFilter, ruleForType)) {
+          return false;
+        }
       }
     }
 

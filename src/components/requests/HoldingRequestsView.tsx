@@ -1,11 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
-import { HoldingDepositRequest, HoldingWithdrawRequest, HoldingRequest, ServiceRequest } from '../../types';
+import {
+  HoldingDepositRequest,
+  HoldingWithdrawRequest,
+  HoldingRequest,
+  ServiceRequest,
+  isUserAssignedHandler,
+  isUserAssignedAuthorizer,
+} from '../../types';
 import { AmountInWords } from '../common/AmountInWords';
 import { StatusBadge, PriorityBadge, DeletionPendingBadge } from '../common/Badge';
 import { formatShortDateIST, formatDateIST } from '../../lib/dateUtils';
 import { THEME_PRESETS } from '../../lib/theme';
+import { DownloadModal } from './DownloadModal';
 import {
   WalletCards,
   ArrowDownRight,
@@ -23,7 +31,14 @@ import {
   Clock,
   ShieldCheck,
   CheckCircle2,
+  XCircle,
+  FileCheck,
+  X,
+  Sparkles,
+  CreditCard,
+  Building2,
   Calendar,
+  AlertTriangle,
   SlidersHorizontal,
   Filter,
 } from 'lucide-react';
@@ -56,6 +71,7 @@ export const HoldingRequestsView: React.FC = () => {
     triggerExportCSV,
     permissions,
     themeConfig,
+    assignmentConfig,
   } = useApp();
   const { user, allUsers } = useAuth();
 
@@ -74,6 +90,7 @@ export const HoldingRequestsView: React.FC = () => {
   const [assignedFilter, setAssignedFilter] = useState<string>(user?.role === 'operator' ? 'mine' : 'all');
   const [sortBy, setSortBy] = useState<string>('oldest_pending'); // Default: oldest on not completed request first
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const canCreate = user?.role === 'client' && (permissions[user?.role || 'client']?.canCreateRequest ?? true);
   const isStaff = user?.role === 'admin' || user?.role === 'operator';
@@ -83,37 +100,83 @@ export const HoldingRequestsView: React.FC = () => {
     [allUsers]
   );
 
-  // Requirement: "make only assigned requsts is avaiable in that list"
+  // Client view: All own requests (assigned or unassigned). Staff view: Only assigned requests.
+  // For the "All" tab, completed/rejected are included. For Deposits/Withdrawals tabs they are excluded.
   const assignedHoldingReqs = useMemo(() => {
     return requests.filter((r): r is HoldingRequest => {
       if (r.type !== 'deposit' && r.type !== 'withdraw') return false;
 
-      // Client only sees their own
-      if (user?.role === 'client' && r.clientId !== user.id) return false;
+      // Clients see all requests of their own whether assigned to someone or not
+      if (user?.role === 'client') {
+        return r.clientId === user.id;
+      }
 
-      const hasOp = Boolean(r.assignedOperatorId && r.assignedOperatorId.trim() !== '');
+      const ruleForType = assignmentConfig.rules[r.type === 'withdraw' ? 'limit' : r.type];
+      const hasOp = Boolean(
+        (r.assignedOperatorId && r.assignedOperatorId.trim() !== '') ||
+        (r.assignedHandlers && r.assignedHandlers.length > 0) ||
+        (r.type === 'withdraw' && (r as HoldingWithdrawRequest).cmaStatus?.handlers && (r as HoldingWithdrawRequest).cmaStatus!.handlers!.length > 0) ||
+        (ruleForType && (ruleForType.handlers?.length || ruleForType.operatorId))
+      );
       const hasAuth =
         r.type === 'withdraw' &&
         Boolean(
-          (r as HoldingWithdrawRequest).assignedAuthorizerId &&
-          (r as HoldingWithdrawRequest).assignedAuthorizerId?.trim() !== ''
+          ((r as HoldingWithdrawRequest).assignedAuthorizerId &&
+            (r as HoldingWithdrawRequest).assignedAuthorizerId?.trim() !== '') ||
+          ((r as HoldingWithdrawRequest).assignedAuthorizers &&
+            (r as HoldingWithdrawRequest).assignedAuthorizers!.length > 0) ||
+          ((r as HoldingWithdrawRequest).cmaStatus?.authorizers &&
+            (r as HoldingWithdrawRequest).cmaStatus!.authorizers!.length > 0) ||
+          (assignmentConfig.rules.limit &&
+            (assignmentConfig.rules.limit.authorizers?.length || assignmentConfig.rules.limit.authorizerId))
         );
 
-      // Must be an assigned request
+      // Staff: Must be an assigned request (completed/rejected are still included for the All tab)
       if (!hasOp && !hasAuth) return false;
 
       return true;
     });
-  }, [requests, user]);
+  }, [requests, user, assignmentConfig]);
 
-  const deposits = assignedHoldingReqs.filter(r => r.type === 'deposit') as HoldingDepositRequest[];
-  const withdrawals = assignedHoldingReqs.filter(r => r.type === 'withdraw') as HoldingWithdrawRequest[];
+  // Deposits and Withdrawals tabs only show open (non-completed/rejected) requests
+  const deposits = assignedHoldingReqs.filter(
+    r => r.type === 'deposit' && r.status !== 'completed' && r.status !== 'rejected'
+  ) as HoldingDepositRequest[];
+  const withdrawals = assignedHoldingReqs.filter(
+    r => r.type === 'withdraw' && r.status !== 'completed' && r.status !== 'rejected'
+  ) as HoldingWithdrawRequest[];
 
   const totalDepositUSD = deposits.reduce((acc, c) => acc + (c.amount || 0), 0);
   const totalWithdrawUSD = withdrawals.reduce((acc, c) => acc + (c.amount || 0), 0);
-  const openCount = assignedHoldingReqs.filter(
-    r => r.status !== 'completed' && r.status !== 'rejected'
-  ).length;
+
+  // Dynamic scope for current tab (withdrawals vs deposits vs all)
+  const tabScope = useMemo(() => {
+    if (activeTab === 'deposits') {
+      const open = deposits.filter(r => r.status !== 'completed' && r.status !== 'rejected').length;
+      return {
+        total: deposits.length,
+        open,
+        label: 'deposits',
+        openLabel: `${open} Open Deposits`,
+      };
+    }
+    if (activeTab === 'withdrawals') {
+      const open = withdrawals.filter(r => r.status !== 'completed' && r.status !== 'rejected').length;
+      return {
+        total: withdrawals.length,
+        open,
+        label: 'withdrawals',
+        openLabel: `${open} Open Withdrawals`,
+      };
+    }
+    const open = assignedHoldingReqs.filter(r => r.status !== 'completed' && r.status !== 'rejected').length;
+    return {
+      total: assignedHoldingReqs.length,
+      open,
+      label: 'limit requests',
+      openLabel: `${open} Open Requests`,
+    };
+  }, [activeTab, deposits, withdrawals, assignedHoldingReqs]);
 
   // Filtered and Sorted Display List
   const displayList = useMemo(() => {
@@ -121,15 +184,16 @@ export const HoldingRequestsView: React.FC = () => {
       // Assignment filter (operator vs admin)
       if (user?.role === 'operator') {
         if (assignedFilter === 'mine') {
-          const isMyOp = r.assignedOperatorId === user.id;
-          const isMyAuth = r.type === 'withdraw' && (r as HoldingWithdrawRequest).assignedAuthorizerId === user.id;
+          const ruleForType = assignmentConfig.rules[r.type === 'withdraw' ? 'limit' : r.type];
+          const isMyOp = isUserAssignedHandler(r, user.id, ruleForType);
+          const isMyAuth = isUserAssignedAuthorizer(r, user.id, assignmentConfig.rules.limit);
           if (!isMyOp && !isMyAuth) return false;
         }
       } else if (user?.role === 'admin') {
         if (assignedFilter !== 'all') {
-          const isSelectedOp = r.assignedOperatorId === assignedFilter;
-          const isSelectedAuth =
-            r.type === 'withdraw' && (r as HoldingWithdrawRequest).assignedAuthorizerId === assignedFilter;
+          const ruleForType = assignmentConfig.rules[r.type === 'withdraw' ? 'limit' : r.type];
+          const isSelectedOp = isUserAssignedHandler(r, assignedFilter, ruleForType);
+          const isSelectedAuth = isUserAssignedAuthorizer(r, assignedFilter, assignmentConfig.rules.limit);
           if (!isSelectedOp && !isSelectedAuth) return false;
         }
       }
@@ -137,6 +201,8 @@ export const HoldingRequestsView: React.FC = () => {
       // Tab filter
       if (activeTab === 'deposits' && r.type !== 'deposit') return false;
       if (activeTab === 'withdrawals' && r.type !== 'withdraw') return false;
+      // Deposits/Withdrawals tabs only show open requests; completed/rejected only show in All tab
+      if ((activeTab === 'deposits' || activeTab === 'withdrawals') && (r.status === 'completed' || r.status === 'rejected')) return false;
 
       // Status filter
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
@@ -259,7 +325,8 @@ export const HoldingRequestsView: React.FC = () => {
   ]);
 
   const handleResetFilters = () => {
-    setActiveTab('all');
+    // Do NOT reset activeTab — tab is navigation, not a filter.
+    // Reset stays on whichever tab (Withdrawals / Deposits / All) is currently active.
     setSearchQuery('');
     setStatusFilter('all');
     setPriorityFilter('all');
@@ -269,8 +336,9 @@ export const HoldingRequestsView: React.FC = () => {
     setSortBy('oldest_pending');
   };
 
+  // Tab is navigation, not a filter — excluded from isFiltered so reset button
+  // won't appear just because a tab is selected.
   const isFiltered =
-    activeTab !== 'all' ||
     searchQuery.trim() !== '' ||
     statusFilter !== 'all' ||
     priorityFilter !== 'all' ||
@@ -280,7 +348,6 @@ export const HoldingRequestsView: React.FC = () => {
     sortBy !== 'oldest_pending';
 
   const activeFiltersCount = [
-    activeTab !== 'all',
     searchQuery.trim() !== '',
     statusFilter !== 'all',
     priorityFilter !== 'all',
@@ -317,11 +384,12 @@ export const HoldingRequestsView: React.FC = () => {
         <div className="flex items-center gap-2.5 shrink-0">
           {isStaff && (
             <button
-              onClick={triggerExportCSV}
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs"
+              id="download-holding-requests-btn"
+              onClick={() => setIsDownloadModalOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <Download className="w-4 h-4 text-slate-400" />
-              <span>Export CSV</span>
+              <span>Download</span>
             </button>
           )}
 
@@ -572,11 +640,11 @@ export const HoldingRequestsView: React.FC = () => {
               <div className="flex items-center gap-3">
                 <span>
                   Showing <strong className="text-slate-700 dark:text-slate-200">{displayList.length}</strong> of{' '}
-                  <strong className="text-slate-700 dark:text-slate-200">{assignedHoldingReqs.length}</strong> assigned limit requests
+                  <strong className="text-slate-700 dark:text-slate-200">{tabScope.total}</strong> assigned {tabScope.label}
                 </span>
                 <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
                   <Clock className="w-3 h-3" />
-                  {openCount} Open Requests
+                  {tabScope.openLabel}
                 </span>
               </div>
 
@@ -602,11 +670,11 @@ export const HoldingRequestsView: React.FC = () => {
             <div className="flex flex-wrap items-center gap-1.5">
               <span>
                 Showing <strong className="text-slate-700 dark:text-slate-200">{displayList.length}</strong> of{' '}
-                <strong className="text-slate-700 dark:text-slate-200">{assignedHoldingReqs.length}</strong> assigned
+                <strong className="text-slate-700 dark:text-slate-200">{tabScope.total}</strong> assigned {tabScope.label}
               </span>
               <span className="text-slate-300 dark:text-slate-700">•</span>
               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                {openCount} Open
+                {tabScope.openLabel}
               </span>
 
               {statusFilter !== 'all' && (
@@ -655,12 +723,12 @@ export const HoldingRequestsView: React.FC = () => {
             <Inbox className="w-6 h-6" />
           </div>
           <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200">
-            No assigned limit requests found
+            No assigned {tabScope.label} found
           </h3>
           <p className="text-xs text-slate-400 max-w-sm mt-1">
             {isFiltered
-              ? 'No deposit or withdrawal requests match your active filters. Try clearing filters.'
-              : 'There are no assigned limit requests in this queue. Unassigned requests are assigned via the Assignment Management view.'}
+              ? `No ${tabScope.label} match your active filters. Try clearing filters.`
+              : `There are no assigned ${tabScope.label} in this queue. Unassigned requests are assigned via the Assignment Management view.`}
           </p>
           <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
             {isFiltered && (
@@ -857,6 +925,16 @@ export const HoldingRequestsView: React.FC = () => {
           })}
         </div>
       )}
+      {/* Download Modal */}
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        viewType={activeTab === 'deposits' ? 'deposit' : activeTab === 'withdrawals' ? 'withdrawal' : 'holding'}
+        data={activeTab === 'deposits' ? deposits : activeTab === 'withdrawals' ? withdrawals : assignedHoldingReqs}
+        staffUsers={staffUsers}
+        activeHex={activeHex}
+        currentUserRole={user?.role}
+      />
     </div>
   );
 };

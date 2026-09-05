@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -28,10 +28,12 @@ import {
 } from 'lucide-react';
 
 import { THEME_PRESETS } from '../../lib/theme';
+import { DownloadModal } from '../requests/DownloadModal';
 
 export const AnalyticsView: React.FC = () => {
   const { requests, triggerExportCSV, isDarkMode, themeConfig } = useApp();
   const { operators, allUsers } = useAuth();
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
 
   const brandPrimary = THEME_PRESETS[themeConfig.preset]?.primaryHex || '#059669';
 
@@ -63,7 +65,7 @@ export const AnalyticsView: React.FC = () => {
 
   // Chart 3: Operator Load & Resolution Metrics
   const operatorMetrics = operators.map(op => {
-    const assigned = requests.filter(r => r.assignedOperatorId === op.id);
+    const assigned = requests.filter(r => r.assignedOperatorId === op.id || r.assignedHandlers?.some(h => h.id === op.id));
     const resolved = assigned.filter(r => r.status === 'completed').length;
     const active = assigned.filter(r => r.status === 'in_progress' || r.status === 'pending').length;
 
@@ -103,11 +105,12 @@ export const AnalyticsView: React.FC = () => {
         </div>
 
         <button
-          onClick={triggerExportCSV}
-          className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 self-start sm:self-auto"
+          id="download-analytics-report-btn"
+          onClick={() => setIsDownloadModalOpen(true)}
+          className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 self-start sm:self-auto shadow-xs cursor-pointer"
         >
           <Download className="w-4 h-4 text-slate-400" />
-          <span>Export Analytics Report</span>
+          <span>Download Report</span>
         </button>
       </div>
 
@@ -273,6 +276,15 @@ export const AnalyticsView: React.FC = () => {
           </div>
         </div>
       </div>
+      {/* Download Modal */}
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        viewType="analytics"
+        data={requests}
+        staffUsers={(allUsers || []).filter(u => u.role === 'operator' || u.role === 'admin')}
+        activeHex={brandPrimary}
+      />
     </div>
   );
 };

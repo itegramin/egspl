@@ -157,6 +157,8 @@ export interface BaseRequest {
   assignedOperatorName?: string;
   assignedAuthorizerId?: string;
   assignedAuthorizerName?: string;
+  assignedHandlers?: HandlerMember[];
+  assignedAuthorizers?: HandlerMember[];
   rejectionReason?: string;
   createdAt: string;
   updatedAt: string;
@@ -213,6 +215,8 @@ export interface CmaStatus {
   authorizerId?: string;
   authorizerName?: string;
   authorizedAmount?: number;
+  handlers?: HandlerMember[];
+  authorizers?: HandlerMember[];
 }
 
 export type WithdrawMethod = 'bank_transfer' | 'imps' | 'upi';
@@ -320,20 +324,66 @@ export interface FilterState {
 }
 
 // ============================================================================
-// AUTO ASSIGNMENT — TYPE-WISE RULES
+// AUTO ASSIGNMENT — TYPE-WISE RULES & MULTI-HANDLER POOLS
 // ============================================================================
+
+export interface HandlerMember {
+  id: string;
+  name: string;
+  role?: string;
+  email?: string;
+}
 
 /**
  * Per-request-type assignment rule.
- * For Limit (withdraw) requests: operatorId = Maker, authorizerId = Authorizer.
- * For Support / Deposit requests: operatorId = assigned handler, authorizerId unused.
+ * Supports both single legacy handler (operatorId / operatorName) and
+ * multiple handlers (handlers: HandlerMember[]).
+ *
+ * For Limit (withdraw) requests:
+ * - handlers / operatorId: Maker / Operator
+ * - authorizers / authorizerId: Authorizer / Checker
  */
 export interface TypeWiseAssignmentRule {
-  operatorId: string;
-  operatorName: string;
+  /** Primary / legacy single operator ID */
+  operatorId?: string;
+  /** Primary / legacy single operator name */
+  operatorName?: string;
+  /** Pool of configured operators/handlers for auto load balancing */
+  handlers?: HandlerMember[];
+
   /** Only used for 'limit' (withdraw) request type */
   authorizerId?: string;
   authorizerName?: string;
+  /** Pool of configured authorizers for limit requests */
+  authorizers?: HandlerMember[];
+}
+
+/**
+ * Normalize handlers array from rule, supporting both multiple handlers and legacy single fields.
+ */
+export function getRuleHandlers(rule: TypeWiseAssignmentRule | null | undefined): HandlerMember[] {
+  if (!rule) return [];
+  if (Array.isArray(rule.handlers) && rule.handlers.length > 0) {
+    return rule.handlers.filter(h => Boolean(h?.id?.trim()));
+  }
+  if (rule.operatorId && rule.operatorId.trim()) {
+    return [{ id: rule.operatorId.trim(), name: rule.operatorName || 'Assigned Operator' }];
+  }
+  return [];
+}
+
+/**
+ * Normalize authorizers array from rule, supporting both multiple authorizers and legacy single fields.
+ */
+export function getRuleAuthorizers(rule: TypeWiseAssignmentRule | null | undefined): HandlerMember[] {
+  if (!rule) return [];
+  if (Array.isArray(rule.authorizers) && rule.authorizers.length > 0) {
+    return rule.authorizers.filter(a => Boolean(a?.id?.trim()));
+  }
+  if (rule.authorizerId && rule.authorizerId.trim()) {
+    return [{ id: rule.authorizerId.trim(), name: rule.authorizerName || 'Assigned Authorizer' }];
+  }
+  return [];
 }
 
 export interface AssignmentConfig {
@@ -344,3 +394,142 @@ export interface AssignmentConfig {
     deposit: TypeWiseAssignmentRule | null; // Deposit requests
   };
 }
+
+/**
+ * Resolves all handlers assigned to a request from direct arrays, legacy fields,
+ * CMA status payload, and active rule pool.
+ */
+export function getRequestHandlers(
+  req: ServiceRequest,
+  rule?: TypeWiseAssignmentRule | null
+): HandlerMember[] {
+  const handlerMap = new Map<string, HandlerMember>();
+
+  // 1. Explicit assignedHandlers on request
+  if (Array.isArray(req.assignedHandlers)) {
+    for (const h of req.assignedHandlers) {
+      if (h?.id) handlerMap.set(h.id, h);
+    }
+  }
+
+  // 2. For withdraw/CMA requests, handlers from cmaStatus
+  if (req.type === 'withdraw') {
+    const cmaHandlers = (req as HoldingWithdrawRequest).cmaStatus?.handlers;
+    if (Array.isArray(cmaHandlers)) {
+      for (const h of cmaHandlers) {
+        if (h?.id) handlerMap.set(h.id, h);
+      }
+    }
+  }
+
+  // 3. Legacy single assigned operator
+  if (req.assignedOperatorId && req.assignedOperatorId.trim()) {
+    const opId = req.assignedOperatorId.trim();
+    if (!handlerMap.has(opId)) {
+      handlerMap.set(opId, {
+        id: opId,
+        name: req.assignedOperatorName || 'Assigned Operator',
+      });
+    }
+  }
+
+  // 4. If an active auto-assignment rule exists and this request is assigned under that rule
+  if (rule) {
+    const ruleHandlers = getRuleHandlers(rule);
+    const ruleHandlerIds = new Set(ruleHandlers.map(h => h.id));
+    const isUnderRule =
+      (req.assignedOperatorId && ruleHandlerIds.has(req.assignedOperatorId)) ||
+      (Array.isArray(req.assignedHandlers) && req.assignedHandlers.some(h => ruleHandlerIds.has(h.id)));
+    if (isUnderRule) {
+      for (const h of ruleHandlers) {
+        if (h?.id) handlerMap.set(h.id, h);
+      }
+    }
+  }
+
+  return Array.from(handlerMap.values());
+}
+
+/**
+ * Resolves all authorizers assigned to a request.
+ */
+export function getRequestAuthorizers(
+  req: ServiceRequest,
+  rule?: TypeWiseAssignmentRule | null
+): HandlerMember[] {
+  if (req.type !== 'withdraw') return [];
+  const wr = req as HoldingWithdrawRequest;
+  const authMap = new Map<string, HandlerMember>();
+
+  // 1. Explicit assignedAuthorizers on request
+  if (Array.isArray(wr.assignedAuthorizers)) {
+    for (const a of wr.assignedAuthorizers) {
+      if (a?.id) authMap.set(a.id, a);
+    }
+  }
+
+  // 2. Authorizers from cmaStatus
+  const cmaAuths = wr.cmaStatus?.authorizers;
+  if (Array.isArray(cmaAuths)) {
+    for (const a of cmaAuths) {
+      if (a?.id) authMap.set(a.id, a);
+    }
+  }
+
+  // 3. Single authorizer
+  const singleId = wr.assignedAuthorizerId || wr.cmaStatus?.authorizerId;
+  const singleName = wr.assignedAuthorizerName || wr.cmaStatus?.authorizerName;
+  if (singleId && singleId.trim()) {
+    const aId = singleId.trim();
+    if (!authMap.has(aId)) {
+      authMap.set(aId, { id: aId, name: singleName || 'Assigned Authorizer' });
+    }
+  }
+
+  // 4. If an active rule exists
+  if (rule) {
+    const ruleAuths = getRuleAuthorizers(rule);
+    const ruleAuthIds = new Set(ruleAuths.map(a => a.id));
+    const isUnderRule =
+      (wr.assignedAuthorizerId && ruleAuthIds.has(wr.assignedAuthorizerId)) ||
+      (Array.isArray(wr.assignedAuthorizers) && wr.assignedAuthorizers.some(a => ruleAuthIds.has(a.id))) ||
+      (wr.cmaStatus?.authorizerId && ruleAuthIds.has(wr.cmaStatus.authorizerId));
+    if (isUnderRule) {
+      for (const a of ruleAuths) {
+        if (a?.id) authMap.set(a.id, a);
+      }
+    }
+  }
+
+  return Array.from(authMap.values());
+}
+
+export function isUserAssignedHandler(
+  req: ServiceRequest,
+  userId: string,
+  rule?: TypeWiseAssignmentRule | null
+): boolean {
+  if (!userId) return false;
+  const handlers = getRequestHandlers(req, rule);
+  return handlers.some(h => h.id === userId);
+}
+
+export function isUserAssignedAuthorizer(
+  req: ServiceRequest,
+  userId: string,
+  rule?: TypeWiseAssignmentRule | null
+): boolean {
+  if (!userId || req.type !== 'withdraw') return false;
+  const authorizers = getRequestAuthorizers(req, rule);
+  return authorizers.some(a => a.id === userId);
+}
+
+export function isUserAssignedToRequest(
+  req: ServiceRequest,
+  userId: string,
+  rule?: TypeWiseAssignmentRule | null
+): boolean {
+  return isUserAssignedHandler(req, userId, rule) || isUserAssignedAuthorizer(req, userId, rule);
+}
+
+
