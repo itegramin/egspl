@@ -120,10 +120,11 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Hardcoded role navigation permissions array
-// ─────────────────────────────────────────────────────────────────────────────
-const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
+// Used ONLY as the fallback initial seed for DEFAULT_PERMISSIONS/SUPABASE.
+// At runtime the Sidebar reads from AppContext.allowedPages (which reflects
+// the persisted csmp_role_permissions.allowed_pages and local cache).
+export const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
   admin: [
     'dashboard',
     'support',
@@ -169,10 +170,9 @@ export const Sidebar: React.FC = () => {
     isMobileSidebarOpen,
     closeMobileSidebar,
     themeConfig,
+    allowedPages,
   } = useApp();
-  const userRole = user?.role || 'client';
-  const allowedPageIds = ROLE_ALLOWED_PAGES[userRole] || ROLE_ALLOWED_PAGES.client;
-  const visibleNavItems = ALL_NAV_ITEMS.filter(item => allowedPageIds.includes(item.id));
+  const visibleNavItems = ALL_NAV_ITEMS.filter(item => allowedPages.includes(item.id));
 
   const SidebarContent = (
     <div className="p-4 flex flex-col justify-between h-full">

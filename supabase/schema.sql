@@ -193,7 +193,7 @@ SET search_path = public
 AS $$
   SELECT COALESCE(
     (SELECT role FROM public.csmp_users WHERE auth_user_id = auth.uid() LIMIT 1),
-    (auth.jwt()->>'role')
+    'client'  -- fail-closed: never trust JWT claims, default to lowest privilege
   );
 $$;
 
@@ -224,12 +224,15 @@ CREATE POLICY "csmp_users_select_policy" ON csmp_users
     OR (auth.role() = 'authenticated' AND role IN ('operator', 'admin'))
   );
 
+-- Security: non-admin inserts are constrained to client/pending (trigger backstops this too, but we enforce at both layers)
 CREATE POLICY "csmp_users_insert_policy" ON csmp_users
   FOR INSERT WITH CHECK (
     auth.role() = 'service_role'
-    OR auth.role() = 'authenticated'
-    -- Allow anon insert only during sign-up flow (handled by Supabase Auth trigger)
-    OR auth.role() = 'anon'
+    OR public.get_auth_role() = 'admin'
+    OR (
+      auth.role() IN ('authenticated', 'anon')
+      AND role = 'client' AND status = 'pending'
+    )
   );
 
 CREATE POLICY "csmp_users_update_policy" ON csmp_users
@@ -272,10 +275,38 @@ BEGIN
 END;
 $$;
 
+-- Also validate INSERT: non-admin/non-service_role inserts must use role='client' + pending (closes the Critical privilege-escalation path)
+CREATE OR REPLACE FUNCTION public.protect_user_fields_on_insert()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF public.get_auth_role() <> 'admin' AND auth.role() <> 'service_role' THEN
+    IF NEW.role <> 'client' THEN
+      RAISE EXCEPTION 'Unauthorized: Self-registered accounts must have role = client (got: %)', NEW.role;
+    END IF;
+    IF NEW.status <> 'pending' THEN
+      RAISE EXCEPTION 'Unauthorized: Self-registered accounts must have status = pending (got: %)', NEW.status;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
 DROP TRIGGER IF EXISTS trg_protect_user_fields ON csmp_users;
 CREATE TRIGGER trg_protect_user_fields
   BEFORE UPDATE ON csmp_users
   FOR EACH ROW EXECUTE FUNCTION public.protect_user_fields();
+
+DROP TRIGGER IF EXISTS trg_protect_user_fields_insert ON csmp_users;
+CREATE TRIGGER trg_protect_user_fields_insert
+  BEFORE INSERT ON csmp_users
+  FOR EACH ROW EXECUTE FUNCTION public.protect_user_fields_on_insert();
+
+-- UNIQUE on auth_user_id: one csmp_users row per auth identity (NULLs not considered equal, so rows without an auth binding are unaffected)
+CREATE UNIQUE INDEX IF NOT EXISTS csmp_users_auth_user_id_key ON csmp_users(auth_user_id);
 
 
 -- -------------------------------------------------------------
@@ -325,12 +356,73 @@ CREATE POLICY "csmp_requests_delete_policy" ON csmp_requests
     OR public.get_auth_role() = 'admin'
   );
 
+-- ── Security hardening: request status-transition validation ────────────────
+-- Enforces the allowed status state machine and the `can_change_status` capability.
+-- Operators with can_change_status=false cannot flip status. Withdrawal requests
+-- that have already been authorized (cma_status->>'authorize' = 'true') are locked.
+CREATE OR REPLACE FUNCTION public.validate_request_status_transition()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  actor_role    TEXT;
+  can_change    BOOLEAN;
+  was_authorized BOOLEAN := false;
+  ok            BOOLEAN;
+BEGIN
+  IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+    RETURN NEW;
+  END IF;
+  actor_role := public.get_auth_role();
+  -- Withdrawal lock: once authorized, status is frozen (UI shows 'Locked')
+  BEGIN
+    was_authorized := (OLD.cma_status IS NOT NULL AND (OLD.cma_status::jsonb->>'authorize')::boolean = true);
+  EXCEPTION WHEN OTHERS THEN
+    was_authorized := false;
+  END;
+  IF was_authorized THEN
+    RAISE EXCEPTION 'Status is frozen: this withdrawal was already authorized and completed.';
+  END IF;
+  -- Capability gate: if actor is operator/non-admin, respect can_change_status
+  IF actor_role <> 'admin' AND auth.role() <> 'service_role' THEN
+    SELECT can_change_status INTO can_change FROM public.csmp_role_permissions WHERE role = actor_role;
+    IF can_change IS FALSE THEN
+      RAISE EXCEPTION 'Not permitted: your role (%) does not have status-change capability.', actor_role;
+    END IF;
+  END IF;
+  -- Allowed state machine (keep in sync with RequestDetailModal + AppContext):
+  -- pending <-> in_progress <-> completed/pending
+  -- * -> rejected (from pending/in_progress/completed)
+  -- rejected -> pending
+  IF OLD.status = 'pending' THEN
+    ok := NEW.status IN ('in_progress', 'completed', 'rejected');
+  ELSIF OLD.status = 'in_progress' THEN
+    ok := NEW.status IN ('pending', 'completed', 'rejected');
+  ELSIF OLD.status = 'completed' THEN
+    ok := NEW.status IN ('pending', 'rejected');
+  ELSIF OLD.status = 'rejected' THEN
+    ok := NEW.status = 'pending';
+  ELSE
+    ok := false;
+  END IF;
+  IF NOT ok THEN
+    RAISE EXCEPTION 'Invalid status transition: % -> %', OLD.status, NEW.status;
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+DROP TRIGGER IF EXISTS trg_validate_request_status ON csmp_requests;
+CREATE TRIGGER trg_validate_request_status
+  BEFORE UPDATE ON csmp_requests
+  FOR EACH ROW EXECUTE FUNCTION public.validate_request_status_transition();
+
 -- -------------------------------------------------------------
 -- 3. csmp_role_permissions POLICIES
 -- -------------------------------------------------------------
--- Anyone can read permissions (needed to build navigation & UI)
 CREATE POLICY "csmp_role_permissions_select_policy" ON csmp_role_permissions
-  FOR SELECT USING (true);
+  FOR SELECT USING (auth.role() IN ('authenticated', 'service_role'));
 
 -- Allow modifying permissions for administrators and service role only (no anon access)
 CREATE POLICY "csmp_role_permissions_admin_policy" ON csmp_role_permissions
@@ -394,11 +486,9 @@ CREATE POLICY "csmp_audit_logs_select_policy" ON csmp_audit_logs
     -- No anon access: audit logs contain sensitive actor/action data
   );
 
--- Only authenticated sessions can write audit logs (prevents unauthenticated injection)
+-- Direct INSERT is blocked; audit entries must go through public.log_audit() (SECURITY DEFINER)
 CREATE POLICY "csmp_audit_logs_insert_policy" ON csmp_audit_logs
-  FOR INSERT WITH CHECK (
-    auth.role() IN ('authenticated', 'service_role')
-  );
+  FOR INSERT WITH CHECK (false);
 
 -- Explicitly block UPDATE on audit logs — immutable ledger
 CREATE POLICY "csmp_audit_logs_no_update" ON csmp_audit_logs
@@ -407,6 +497,48 @@ CREATE POLICY "csmp_audit_logs_no_update" ON csmp_audit_logs
 -- Only service_role (server-side ops) can delete audit logs — no client deletion
 CREATE POLICY "csmp_audit_logs_no_delete" ON csmp_audit_logs
   FOR DELETE USING (auth.role() = 'service_role');
+
+-- ── Security hardening: server-derived audit writes ─────────────────────────
+-- The ledger is append-only. Direct INSERT is blocked (WITH CHECK (false)).
+-- Writes go through this SECURITY DEFINER function, which:
+--   * rejects unauthenticated sessions;
+--   * derives actor_id / actor_name / actor_role from csmp_users for auth.uid()
+--     (falling back to auth.users identity when no csmp_users row exists yet);
+--   * sets timestamp = now() and ip_address = inet_client_addr() server-side.
+-- Callers (saveAuditLogToSupabase via rpc) pass only action/target. The
+-- function ignores any client-supplied actor fields — it re-derives them from
+-- the authenticated session.
+CREATE OR REPLACE FUNCTION public.log_audit(
+  p_action      TEXT,
+  p_target_type TEXT,
+  p_target_id   TEXT,
+  p_details     TEXT DEFAULT NULL
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $rpc$
+DECLARE
+  v_uid  UUID := auth.uid();
+  v_row  RECORD;
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Unauthenticated: not allowed to write audit logs.';
+  END IF;
+  SELECT id, name, role INTO v_row FROM public.csmp_users WHERE auth_user_id = v_uid LIMIT 1;
+  IF v_row.id IS NULL THEN
+    v_row.id   := v_uid::text;
+    v_row.name := COALESCE(auth.jwt()->>'email', v_uid::text);
+    v_row.role := 'unknown';
+  END IF;
+  INSERT INTO public.csmp_audit_logs (id, actor_id, actor_name, actor_role, action, target_type, target_id, details, timestamp, ip_address)
+  VALUES (
+    'log_' || floor(extract(epoch from now()) * 1000)::text || '_' || substring(md5(random()::text) from 1 for 5),
+    v_row.id, v_row.name, v_row.role, p_action, p_target_type, p_target_id, p_details, now(), inet_client_addr()::text
+  );
+END;
+$rpc$;
 
 -- Grant appropriate permissions to Supabase roles
 GRANT USAGE ON SCHEMA public TO postgres, supabase_admin, supabase_auth_admin, anon, authenticated, service_role;
@@ -568,13 +700,19 @@ ALTER TABLE csmp_settings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "csmp-settings-read" ON csmp_settings;
 CREATE POLICY "csmp-settings-read" ON csmp_settings
-  FOR SELECT USING (true);
+  FOR SELECT USING (auth.role() IN ('authenticated', 'service_role'));
 
 DROP POLICY IF EXISTS "csmp-settings-write" ON csmp_settings;
 CREATE POLICY "csmp-settings-write" ON csmp_settings
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR ALL USING (
+    auth.role() = 'service_role' OR
+    EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
+  ) WITH CHECK (
+    auth.role() = 'service_role' OR
+    EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
+  );
 
-GRANT ALL ON TABLE csmp_settings TO anon, authenticated, service_role;
+GRANT ALL ON TABLE csmp_settings TO authenticated, service_role;
 
 -- -------------------------------------------------------------
 -- 7. COMMISSION REPORTING TABLES (CSP Splits, TDS & Reports)
@@ -606,13 +744,19 @@ ALTER TABLE csmp_commission_records ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "csmp-commissions-read" ON csmp_commission_records;
 CREATE POLICY "csmp-commissions-read" ON csmp_commission_records
-  FOR SELECT USING (true);
+  FOR SELECT USING (auth.role() IN ('authenticated', 'service_role'));
 
 DROP POLICY IF EXISTS "csmp-commissions-write" ON csmp_commission_records;
 CREATE POLICY "csmp-commissions-write" ON csmp_commission_records
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR ALL USING (
+    auth.role() = 'service_role' OR
+    EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
+  ) WITH CHECK (
+    auth.role() = 'service_role' OR
+    EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
+  );
 
-GRANT ALL ON TABLE csmp_commission_records TO anon, authenticated, service_role;
+GRANT ALL ON TABLE csmp_commission_records TO authenticated, service_role;
 
 -- Commission Split & TDS Configuration Table
 CREATE TABLE IF NOT EXISTS csmp_commission_configs (
@@ -627,13 +771,19 @@ ALTER TABLE csmp_commission_configs ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "csmp-commission-configs-read" ON csmp_commission_configs;
 CREATE POLICY "csmp-commission-configs-read" ON csmp_commission_configs
-  FOR SELECT USING (true);
+  FOR SELECT USING (auth.role() IN ('authenticated', 'service_role'));
 
 DROP POLICY IF EXISTS "csmp-commission-configs-write" ON csmp_commission_configs;
 CREATE POLICY "csmp-commission-configs-write" ON csmp_commission_configs
-  FOR ALL USING (true) WITH CHECK (true);
+  FOR ALL USING (
+    auth.role() = 'service_role' OR
+    EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
+  ) WITH CHECK (
+    auth.role() = 'service_role' OR
+    EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
+  );
 
-GRANT ALL ON TABLE csmp_commission_configs TO anon, authenticated, service_role;
+GRANT ALL ON TABLE csmp_commission_configs TO authenticated, service_role;
 
 -- CSP Categories (Rural / Urban with differentiated commission shares)
 CREATE TABLE IF NOT EXISTS csmp_csp_categories (

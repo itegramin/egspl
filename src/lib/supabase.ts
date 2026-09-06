@@ -610,12 +610,71 @@ export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
 };
 
-export async function fetchPermissionsFromSupabase(): Promise<Record<UserRole, RolePermissions> | null> {
-  return INITIAL_ROLE_PERMISSIONS;
+function mapDbRolePermission(row: any): RolePermissions {
+  return {
+    role: row.role as UserRole,
+    allowedPages: Array.isArray(row.allowed_pages) ? row.allowed_pages as PageId[] : [],
+    canCreateRequest: Boolean(row.can_create_request),
+    canChangeStatus: Boolean(row.can_change_status),
+    canAssignOperator: Boolean(row.can_assign_operator),
+    canAddInternalNotes: Boolean(row.can_add_internal_notes),
+    canViewAllClients: Boolean(row.can_view_all_clients),
+    canManageRoles: Boolean(row.can_manage_roles),
+    canExportReports: Boolean(row.can_export_reports),
+    canViewAuditLogs: Boolean(row.can_view_audit_logs),
+  };
 }
 
-export async function savePermissionsToSupabase(_role: UserRole, _perms: RolePermissions): Promise<void> {
-  // Hardcoded permissions array used - no-op for database writes
+function mapRolePermissionToDb(perms: RolePermissions): Record<string, any> {
+  return {
+    role: perms.role,
+    allowed_pages: perms.allowedPages as any,
+    can_create_request: perms.canCreateRequest,
+    can_change_status: perms.canChangeStatus,
+    can_assign_operator: perms.canAssignOperator,
+    can_add_internal_notes: perms.canAddInternalNotes,
+    can_view_all_clients: perms.canViewAllClients,
+    can_manage_roles: perms.canManageRoles,
+    can_export_reports: perms.canExportReports,
+    can_view_audit_logs: perms.canViewAuditLogs,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function fetchPermissionsFromSupabase(): Promise<Record<UserRole, RolePermissions> | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase.from('csmp_role_permissions').select('*');
+    if (error) throw error;
+    if (!data || data.length === 0) return null;
+
+    const result: Record<UserRole, RolePermissions> = {
+      admin: { ...INITIAL_ROLE_PERMISSIONS.admin },
+      operator: { ...INITIAL_ROLE_PERMISSIONS.operator },
+      client: { ...INITIAL_ROLE_PERMISSIONS.client },
+    };
+    for (const row of data) {
+      const mapped = mapDbRolePermission(row);
+      // Preserve any missing/allows DB to act as override over hardcoded seeds
+      result[mapped.role as UserRole] = { ...INITIAL_ROLE_PERMISSIONS[mapped.role as UserRole], ...mapped };
+    }
+    return result;
+  } catch (err: any) {
+    console.warn('[RBAC] Could not fetch permissions from Supabase:', err?.message || err);
+    return null;
+  }
+}
+
+export async function savePermissionsToSupabase(role: UserRole, perms: RolePermissions): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    const payload = mapRolePermissionToDb(perms);
+    const { error } = await supabase.from('csmp_role_permissions').upsert(payload, { onConflict: 'role' });
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('[RBAC] Could not persist permissions to Supabase:', err?.message || err);
+    throw err;
+  }
 }
 
 function normalizeAssignmentRule(rule: any): TypeWiseAssignmentRule | null {
@@ -710,9 +769,28 @@ export async function fetchAuditLogsFromSupabase(): Promise<AuditLog[]> {
 }
 
 export async function saveAuditLogToSupabase(log: AuditLog): Promise<void> {
-  const payload = mapAuditLogToDb(log);
-  const { error } = await supabase.from('csmp_audit_logs').insert(payload);
-  if (error) throw error;
+  // Audit entries go through the server-derived RPC so the ledger cannot be
+  // forged. Direct INSERT is blocked by RLS (WITH CHECK (false)). The RPC
+  // re-derives actor identity + timestamp from the authenticated session.
+  const { error } = await supabase.rpc('log_audit', {
+    p_action: log.action,
+    p_target_type: log.targetType ?? 'system',
+    p_target_id: log.targetId ?? 'unknown',
+    p_details: log.details ?? null,
+  });
+  if (error) {
+    // Fallback only when the migration has not been applied yet (e.g. dev
+    // before `npm run db:migrate`).
+    const errMsg = error.message ?? '';
+    const looksMissing = errMsg.includes('log_audit') || errMsg.includes('function') || errMsg.includes('does not exist');
+    if (looksMissing) {
+      const payload = mapAuditLogToDb(log);
+      const retry = await supabase.from('csmp_audit_logs').insert(payload);
+      if (retry.error) throw retry.error;
+      return;
+    }
+    throw error;
+  }
 }
 
 // -------------------------------------------------------------

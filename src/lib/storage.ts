@@ -145,14 +145,33 @@ export function saveRequests(_requests: ServiceRequest[]): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Role Permissions — Hardcoded defaults
-// ─────────────────────────────────────────────────────────────────────────────
+// Role Permissions — persisted to csmp_role_permissions via Supabase;
+// cached to localStorage so RBAC changes survive refreshes without waiting
+// for DB sync. `getStoredPermissions` falls back to hardcoded defaults.
 export function getStoredPermissions(): Record<UserRole, RolePermissions> {
-  return DEFAULT_PERMISSIONS;
+  try {
+    const raw = localStorage.getItem(PERMISSIONS_KEY);
+    if (!raw) return DEFAULT_PERMISSIONS;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_PERMISSIONS;
+    // Merge persisted payload over defaults so missing roles/fallbacks are safe
+    const merged: Record<UserRole, RolePermissions> = {
+      admin: { ...DEFAULT_PERMISSIONS.admin, ...(parsed.admin || {}) },
+      operator: { ...DEFAULT_PERMISSIONS.operator, ...(parsed.operator || {}) },
+      client: { ...DEFAULT_PERMISSIONS.client, ...(parsed.client || {}) },
+    };
+    return merged;
+  } catch {
+    return DEFAULT_PERMISSIONS;
+  }
 }
 
-export function savePermissions(_perms: Record<UserRole, RolePermissions>): void {
-  // Intentionally empty — permissions use hardcoded arrays.
+export function savePermissions(perms: Record<UserRole, RolePermissions>): void {
+  try {
+    localStorage.setItem(PERMISSIONS_KEY, JSON.stringify(perms));
+  } catch (err) {
+    console.warn('Could not save RBAC permissions to localStorage:', err);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -374,38 +393,23 @@ export function exportRequestsToCSV(requests: ServiceRequest[], filename = 'clie
 // Commission Reporting Storage
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Commission Records — localStorage REMOVED (Financial PII protection)
+// ─────────────────────────────────────────────────────────────────────────────
+// Records contain CSP names/codes, amounts, and transaction detail — the same
+// sensitivity class as pending requests. Persisting them to localStorage
+// causes post-logout leakage and amplifies any XSS vector. They now live in
+// React state only and are fetched from Supabase (RLS-guarded) on demand.
+
+/** @deprecated Commission records are in-memory / database-only. */
 export function getStoredCommissionRecords(): RawCommissionRecord[] {
-  try {
-    const raw = localStorage.getItem(COMMISSION_RECORDS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((r: any) => {
-      const parts = (r.period || '').trim().split(' ');
-      return {
-        ...r,
-        month: r.month || parts[0] || undefined,
-        year:
-          r.year != null
-            ? Number(r.year)
-            : parts[1] && !isNaN(Number(parts[1]))
-            ? Number(parts[1])
-            : undefined,
-      };
-    });
-  } catch {
-    return [];
-  }
+  return [];
 }
 
-export function saveCommissionRecords(records: RawCommissionRecord[]): void {
-  try {
-    // Cap local storage cache to latest 500 records to prevent browser quota exhaustion
-    const toCache = records.length > 500 ? records.slice(0, 500) : records;
-    localStorage.setItem(COMMISSION_RECORDS_KEY, JSON.stringify(toCache));
-  } catch (err) {
-    console.warn('Could not save commission records to localStorage:', err);
-  }
+/** @deprecated Commission records are in-memory / database-only. No-op. */
+export function saveCommissionRecords(_records: RawCommissionRecord[]): void {
+  // Intentionally empty — CSP names/codes + financial amounts are never written
+  // to localStorage.
 }
 
 export function getStoredSplitConfig(): CommissionSplitConfig {
@@ -611,7 +615,11 @@ export function clearSensitiveStorage(): void {
   localStorage.removeItem('csmp_auth_session_active');
   localStorage.removeItem('csmp_audit_logs_v1');
   localStorage.removeItem(GLOBAL_NOTICES_KEY);
+  localStorage.removeItem(COMMISSION_RECORDS_KEY);
+  localStorage.removeItem(COMMISSION_SPLIT_KEY);
+  localStorage.removeItem(COMMISSION_TDS_KEY);
   localStorage.removeItem(COMMISSION_TRANSACTION_TYPES_KEY);
+  localStorage.removeItem(CSP_CATEGORIES_KEY);
 }
 
 

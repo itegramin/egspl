@@ -538,11 +538,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsSupabaseConnected(health.connected);
 
       if (health.connected) {
-        const [dbReqs, dbNotifs, dbAudit, dbAssignmentConfig] = await Promise.all([
+        const [dbReqs, dbNotifs, dbAudit, dbAssignmentConfig, dbPerms] = await Promise.all([
           fetchRequestsFromSupabase().catch(() => null),
           fetchNotificationsFromSupabase().catch(() => null),
           fetchAuditLogsFromSupabase().catch(() => null),
           fetchAssignmentConfigFromSupabase().catch(() => null),
+          fetchPermissionsFromSupabase().catch(() => null),
         ]);
 
         if (dbReqs && dbReqs.length > 0) {
@@ -560,6 +561,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (dbAssignmentConfig) {
           setAssignmentConfig(dbAssignmentConfig);
           saveAssignmentConfig(dbAssignmentConfig);
+        }
+        if (dbPerms) {
+          setPermissions(dbPerms);
+          savePermissions(dbPerms);
         }
 
         // Commission records and rules

@@ -837,8 +837,8 @@ export const HoldingRequestsView: React.FC = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <div className="text-xl font-extrabold text-slate-900 dark:text-white">
-                        {isDeposit ? dep.currency : wdr.currency} {(isDeposit ? dep.amount : wdr.amount)?.toLocaleString()}
+                      <div className="text-xl text-slate-900 dark:text-white">
+                        {isDeposit ? dep.currency : wdr.currency} <span className="font-extrabold">{(isDeposit ? dep.amount : wdr.amount)?.toLocaleString()}</span>
                       </div>
                       <AmountInWords
                         amount={isDeposit ? dep.amount : wdr.amount}
