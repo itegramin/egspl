@@ -1399,12 +1399,85 @@ export type Database = {
         }
         Relationships: []
       }
+      csmp_csp_categories: {
+        Row: {
+          id: string
+          code: string
+          name: string
+          description: string | null
+          csp_share_percent: number
+          corporate_share_percent: number
+          is_active: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          code: string
+          name: string
+          description?: string | null
+          csp_share_percent?: number
+          corporate_share_percent?: number
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          code?: string
+          name?: string
+          description?: string | null
+          csp_share_percent?: number
+          corporate_share_percent?: number
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      csmp_transaction_type: {
+        Row: {
+          id: string
+          name: string
+          description: string | null
+          tx_type: string
+          transaction_rural_split: number
+          transaction_urban_split: number
+          is_active: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          name: string
+          description?: string | null
+          tx_type: string
+          transaction_rural_split?: number
+          transaction_urban_split?: number
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          name?: string
+          description?: string | null
+          tx_type?: string
+          transaction_rural_split?: number
+          transaction_urban_split?: number
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       csmp_users: {
         Row: {
           account: string | null
           auth_user_id: string | null
           avatar_url: string | null
           bank: string | null
+          category: string | null
           company_name: string | null
           created_at: string | null
           currency: string | null
@@ -1423,6 +1496,7 @@ export type Database = {
           auth_user_id?: string | null
           avatar_url?: string | null
           bank?: string | null
+          category?: string | null
           company_name?: string | null
           created_at?: string | null
           currency?: string | null
@@ -1441,6 +1515,7 @@ export type Database = {
           auth_user_id?: string | null
           avatar_url?: string | null
           bank?: string | null
+          category?: string | null
           company_name?: string | null
           created_at?: string | null
           currency?: string | null

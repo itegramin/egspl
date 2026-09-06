@@ -11,7 +11,7 @@ import {
 } from '../../types';
 import { AmountInWords } from '../common/AmountInWords';
 import { StatusBadge, PriorityBadge, DeletionPendingBadge } from '../common/Badge';
-import { formatShortDateIST, formatDateIST } from '../../lib/dateUtils';
+import { formatShortDateTime, formatDateIST } from '../../lib/dateUtils';
 import { THEME_PRESETS } from '../../lib/theme';
 import { DownloadModal } from './DownloadModal';
 import {
@@ -784,7 +784,7 @@ export const HoldingRequestsView: React.FC = () => {
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] text-slate-400 font-mono">
-                        {formatShortDateIST(item.createdAt)}
+                        {formatShortDateTime(item.createdAt)}
                       </span>
                       <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                         {item.ticketNumber}
@@ -837,8 +837,8 @@ export const HoldingRequestsView: React.FC = () => {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                     <div>
-                      <div className="text-xl font-extrabold text-slate-900 dark:text-white">
-                        {isDeposit ? dep.currency : wdr.currency} {(isDeposit ? dep.amount : wdr.amount)?.toLocaleString()}
+                      <div className="text-xl text-slate-900 dark:text-white">
+                        {isDeposit ? dep.currency : wdr.currency} <span className="font-extrabold">{(isDeposit ? dep.amount : wdr.amount)?.toLocaleString()}</span>
                       </div>
                       <AmountInWords
                         amount={isDeposit ? dep.amount : wdr.amount}
@@ -910,8 +910,8 @@ export const HoldingRequestsView: React.FC = () => {
                 </div>
 
                 <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                  <span className="font-medium text-slate-600 dark:text-slate-300 truncate max-w-45">
-                    {item.clientName} {item.clientCompany && `(${item.clientCompany})`}
+                  <span className="font-bold text-slate-600 dark:text-slate-300 truncate max-w-45">
+                    {item.kioskId} | {item.clientName} {item.clientCompany && `(${item.clientCompany})`}
                   </span>
                   <span
                     className="inline-flex items-center gap-1 font-semibold group-hover:underline cursor-pointer"

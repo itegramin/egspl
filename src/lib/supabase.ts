@@ -31,6 +31,25 @@ import type {
   TypeWiseAssignmentRule,
 } from '../types/app.type';
 import { getRuleHandlers, getRuleAuthorizers } from '../types/app.type';
+import type {
+  RawCommissionRecord,
+  CommissionSplitConfig,
+  TdsConfig,
+  TransactionTypeDefinition,
+  CspCategory,
+} from '../types/commission.type';
+import {
+  getStoredCommissionRecords,
+  saveCommissionRecords,
+  getStoredSplitConfig,
+  saveSplitConfig,
+  getStoredTdsConfig,
+  saveTdsConfig,
+  getStoredTransactionTypes,
+  saveTransactionTypes,
+  getStoredCspCategories,
+  saveCspCategories,
+} from './storage';
 
 const supabaseUrl: string = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey: string =
@@ -152,6 +171,7 @@ export function mapDbUser(row: DbUser | any): User {
     estimatedHoldingBalance: row.estimated_holding_balance ? Number(row.estimated_holding_balance) : 0,
     currency: row.currency || 'INR',
     status: (row.status as User['status']) || 'active',
+    category: row.category || 'rural',
     createdAt: row.created_at || new Date().toISOString(),
   };
 }
@@ -170,6 +190,7 @@ export function mapUserToDb(u: User): DbUserInsert {
     ifsc: u.ifsc || null,
     bank: u.bank || null,
     kiosk_id: u.kioskId || null,
+    category: u.category || 'rural',
     estimated_holding_balance: u.estimatedHoldingBalance ?? null,
     currency: u.currency || 'INR',
     status: u.status,
@@ -553,7 +574,7 @@ export async function deleteRequestFromSupabase(reqId: string): Promise<void> {
 export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   admin: {
     role: 'admin',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'rbac', 'audit-logs', 'notifications', 'settings', 'transaction-types'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -565,7 +586,7 @@ export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   operator: {
     role: 'operator',
-    allowedPages: ['dashboard', 'support', 'holding', 'all-requests', 'assignments', 'clients', 'analytics', 'notifications'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions', 'all-requests', 'assignments', 'clients', 'analytics', 'notifications'],
     canCreateRequest: false,
     canChangeStatus: true,
     canAssignOperator: true,
@@ -577,24 +598,83 @@ export const INITIAL_ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
   },
   client: {
     role: 'client',
-    allowedPages: ['dashboard', 'support', 'holding'],
+    allowedPages: ['dashboard', 'support', 'holding', 'commissions'],
     canCreateRequest: true,
     canChangeStatus: false,
     canAssignOperator: false,
     canAddInternalNotes: false,
     canViewAllClients: false,
     canManageRoles: false,
-    canExportReports: false,
+    canExportReports: true,
     canViewAuditLogs: false,
   },
 };
 
-export async function fetchPermissionsFromSupabase(): Promise<Record<UserRole, RolePermissions> | null> {
-  return INITIAL_ROLE_PERMISSIONS;
+function mapDbRolePermission(row: any): RolePermissions {
+  return {
+    role: row.role as UserRole,
+    allowedPages: Array.isArray(row.allowed_pages) ? row.allowed_pages as PageId[] : [],
+    canCreateRequest: Boolean(row.can_create_request),
+    canChangeStatus: Boolean(row.can_change_status),
+    canAssignOperator: Boolean(row.can_assign_operator),
+    canAddInternalNotes: Boolean(row.can_add_internal_notes),
+    canViewAllClients: Boolean(row.can_view_all_clients),
+    canManageRoles: Boolean(row.can_manage_roles),
+    canExportReports: Boolean(row.can_export_reports),
+    canViewAuditLogs: Boolean(row.can_view_audit_logs),
+  };
 }
 
-export async function savePermissionsToSupabase(_role: UserRole, _perms: RolePermissions): Promise<void> {
-  // Hardcoded permissions array used - no-op for database writes
+function mapRolePermissionToDb(perms: RolePermissions): Record<string, any> {
+  return {
+    role: perms.role,
+    allowed_pages: perms.allowedPages as any,
+    can_create_request: perms.canCreateRequest,
+    can_change_status: perms.canChangeStatus,
+    can_assign_operator: perms.canAssignOperator,
+    can_add_internal_notes: perms.canAddInternalNotes,
+    can_view_all_clients: perms.canViewAllClients,
+    can_manage_roles: perms.canManageRoles,
+    can_export_reports: perms.canExportReports,
+    can_view_audit_logs: perms.canViewAuditLogs,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function fetchPermissionsFromSupabase(): Promise<Record<UserRole, RolePermissions> | null> {
+  if (!isSupabaseConfigured) return null;
+  try {
+    const { data, error } = await supabase.from('csmp_role_permissions').select('*');
+    if (error) throw error;
+    if (!data || data.length === 0) return null;
+
+    const result: Record<UserRole, RolePermissions> = {
+      admin: { ...INITIAL_ROLE_PERMISSIONS.admin },
+      operator: { ...INITIAL_ROLE_PERMISSIONS.operator },
+      client: { ...INITIAL_ROLE_PERMISSIONS.client },
+    };
+    for (const row of data) {
+      const mapped = mapDbRolePermission(row);
+      // Preserve any missing/allows DB to act as override over hardcoded seeds
+      result[mapped.role as UserRole] = { ...INITIAL_ROLE_PERMISSIONS[mapped.role as UserRole], ...mapped };
+    }
+    return result;
+  } catch (err: any) {
+    console.warn('[RBAC] Could not fetch permissions from Supabase:', err?.message || err);
+    return null;
+  }
+}
+
+export async function savePermissionsToSupabase(role: UserRole, perms: RolePermissions): Promise<void> {
+  if (!isSupabaseConfigured) return;
+  try {
+    const payload = mapRolePermissionToDb(perms);
+    const { error } = await supabase.from('csmp_role_permissions').upsert(payload, { onConflict: 'role' });
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('[RBAC] Could not persist permissions to Supabase:', err?.message || err);
+    throw err;
+  }
 }
 
 function normalizeAssignmentRule(rule: any): TypeWiseAssignmentRule | null {
@@ -689,9 +769,28 @@ export async function fetchAuditLogsFromSupabase(): Promise<AuditLog[]> {
 }
 
 export async function saveAuditLogToSupabase(log: AuditLog): Promise<void> {
-  const payload = mapAuditLogToDb(log);
-  const { error } = await supabase.from('csmp_audit_logs').insert(payload);
-  if (error) throw error;
+  // Audit entries go through the server-derived RPC so the ledger cannot be
+  // forged. Direct INSERT is blocked by RLS (WITH CHECK (false)). The RPC
+  // re-derives actor identity + timestamp from the authenticated session.
+  const { error } = await supabase.rpc('log_audit', {
+    p_action: log.action,
+    p_target_type: log.targetType ?? 'system',
+    p_target_id: log.targetId ?? 'unknown',
+    p_details: log.details ?? null,
+  });
+  if (error) {
+    // Fallback only when the migration has not been applied yet (e.g. dev
+    // before `npm run db:migrate`).
+    const errMsg = error.message ?? '';
+    const looksMissing = errMsg.includes('log_audit') || errMsg.includes('function') || errMsg.includes('does not exist');
+    if (looksMissing) {
+      const payload = mapAuditLogToDb(log);
+      const retry = await supabase.from('csmp_audit_logs').insert(payload);
+      if (retry.error) throw retry.error;
+      return;
+    }
+    throw error;
+  }
 }
 
 // -------------------------------------------------------------
@@ -881,3 +980,361 @@ function toAttachment(f: File, id: string, url: string, uploadedAt: string, uplo
     uploadedBy,
   };
 }
+
+// -------------------------------------------------------------
+// COMMISSION REPORTING: Queries & Persistence
+// -------------------------------------------------------------
+
+export async function fetchCommissionRecordsFromSupabase(): Promise<RawCommissionRecord[]> {
+  if (!isSupabaseConfigured) {
+    return getStoredCommissionRecords();
+  }
+
+  try {
+    const pageSize = 1000;
+    let allRecords: RawCommissionRecord[] = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('csmp_commission_records')
+        .select('*')
+        .range(from, from + pageSize - 1)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        const batch: RawCommissionRecord[] = data.map((r: any) => {
+          const parts = (r.period || '').trim().split(' ');
+          const fallbackMonth = parts[0] || undefined;
+          const fallbackYear = parts[1] && !isNaN(Number(parts[1])) ? Number(parts[1]) : undefined;
+
+          return {
+            id: r.id,
+            circle: r.circle,
+            circleName: r.circle_name,
+            bcbfCode: r.bcbf_code,
+            cspCode: r.csp_code,
+            cspName: r.csp_name,
+            transactionType: r.transaction_type,
+            numTxnsOrAvgBal: Number(r.num_txns_or_avg_bal) || 0,
+            rawCommission: Number(r.raw_commission) || 0,
+            period: r.period,
+            month: r.month || fallbackMonth,
+            year: r.year != null ? Number(r.year) : fallbackYear,
+            batchId: r.batch_id || undefined,
+            notes: r.notes || undefined,
+            createdAt: r.created_at || new Date().toISOString(),
+          };
+        });
+
+        allRecords = allRecords.concat(batch);
+
+        if (data.length < pageSize) {
+          hasMore = false;
+        } else {
+          from += pageSize;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    if (allRecords.length > 0) {
+      saveCommissionRecords(allRecords);
+      return allRecords;
+    }
+  } catch (err: any) {
+    console.warn('Supabase fetchCommissionRecords offline or table pending, using fallback:', err?.message);
+  }
+
+  return getStoredCommissionRecords();
+}
+
+export async function saveCommissionRecordsToSupabase(records: RawCommissionRecord[]): Promise<void> {
+  // Always update local cache first for instant feedback
+  saveCommissionRecords(records);
+
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const rows = records.map(r => {
+      const parts = (r.period || '').trim().split(' ');
+      const m = r.month || (parts[0] || null);
+      const y = r.year != null ? r.year : (parts[1] && !isNaN(Number(parts[1])) ? Number(parts[1]) : null);
+
+      return {
+        id: r.id,
+        circle: r.circle,
+        circle_name: r.circleName,
+        bcbf_code: r.bcbfCode,
+        csp_code: r.cspCode,
+        csp_name: r.cspName,
+        transaction_type: r.transactionType,
+        num_txns_or_avg_bal: r.numTxnsOrAvgBal,
+        raw_commission: r.rawCommission,
+        period: r.period,
+        month: m,
+        year: y,
+        batch_id: r.batchId || null,
+        notes: r.notes || null,
+        created_at: r.createdAt,
+      };
+    });
+
+    // Upsert in batches of 500 to avoid payload size limits
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      const { error } = await supabase.from('csmp_commission_records').upsert(chunk, { onConflict: 'id' });
+      if (error) throw error;
+    }
+  } catch (err: any) {
+    console.warn('Could not persist commission records to Supabase:', err?.message);
+  }
+}
+
+export async function fetchCommissionConfigsFromSupabase(): Promise<{
+  split: CommissionSplitConfig;
+  tds: TdsConfig;
+  transactionTypes: TransactionTypeDefinition[];
+}> {
+  const localSplit = getStoredSplitConfig();
+  const localTds = getStoredTdsConfig();
+  const localTransactionTypes = getStoredTransactionTypes();
+
+  if (!isSupabaseConfigured) {
+    return { split: localSplit, tds: localTds, transactionTypes: localTransactionTypes };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('csmp_commission_configs')
+      .select('*');
+
+    if (error) throw error;
+
+    let split = localSplit;
+    let tds = localTds;
+    let transactionTypes = localTransactionTypes;
+
+    for (const row of data || []) {
+      if (row.config_type === 'split' && row.config_data) {
+        split = row.config_data as CommissionSplitConfig;
+        saveSplitConfig(split);
+      } else if (row.config_type === 'tds' && row.config_data) {
+        tds = row.config_data as TdsConfig;
+        saveTdsConfig(tds);
+      } else if (row.config_type === 'transaction_types' && row.config_data) {
+        const parsed = row.config_data as TransactionTypeDefinition[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          transactionTypes = parsed;
+          saveTransactionTypes(transactionTypes);
+        }
+      }
+    }
+
+    return { split, tds, transactionTypes };
+  } catch (err: any) {
+    console.warn('Supabase fetchCommissionConfigs offline, using fallback:', err?.message);
+    return { split: localSplit, tds: localTds, transactionTypes: localTransactionTypes };
+  }
+}
+
+export async function saveCommissionConfigToSupabase(
+  type: 'split' | 'tds' | 'transaction_types',
+  configData: CommissionSplitConfig | TdsConfig | TransactionTypeDefinition[],
+  userName = 'System Admin'
+): Promise<void> {
+  if (type === 'split') {
+    saveSplitConfig(configData as CommissionSplitConfig);
+  } else if (type === 'tds') {
+    saveTdsConfig(configData as TdsConfig);
+  } else if (type === 'transaction_types') {
+    saveTransactionTypes(configData as TransactionTypeDefinition[]);
+  }
+
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const payload = {
+      id: `cfg_${type}`,
+      config_type: type,
+      config_data: configData,
+      updated_at: new Date().toISOString(),
+      updated_by: userName,
+    };
+
+    const { error } = await supabase.from('csmp_commission_configs').upsert(payload, { onConflict: 'id' });
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('Could not persist commission config to Supabase:', err?.message);
+  }
+}
+
+export async function fetchCspCategoriesFromSupabase(): Promise<CspCategory[]> {
+  const localCats = getStoredCspCategories();
+  if (!isSupabaseConfigured) return localCats;
+
+  try {
+    const { data, error } = await supabase
+      .from('csmp_csp_categories')
+      .select('*')
+      .order('code', { ascending: true });
+
+    if (error) throw error;
+    if (data && data.length > 0) {
+      const categories: CspCategory[] = data.map((r: any) => ({
+        id: r.id,
+        code: r.code,
+        name: r.name,
+        description: r.description || undefined,
+        cspSharePercent: Number(r.csp_share_percent),
+        corporateSharePercent: Number(r.corporate_share_percent),
+        isActive: r.is_active ?? true,
+        createdAt: r.created_at || undefined,
+        updatedAt: r.updated_at || undefined,
+      }));
+      saveCspCategories(categories);
+      return categories;
+    }
+    return localCats;
+  } catch (err: any) {
+    console.warn('Supabase fetchCspCategories offline, using fallback:', err?.message);
+    return localCats;
+  }
+}
+
+export async function saveCspCategoryToSupabase(cat: CspCategory): Promise<void> {
+  const current = getStoredCspCategories();
+  const updated = current.some((c) => c.id === cat.id || c.code === cat.code)
+    ? current.map((c) => (c.id === cat.id || c.code === cat.code ? cat : c))
+    : [...current, cat];
+  saveCspCategories(updated);
+
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const payload = {
+      id: cat.id || `cat_${cat.code}`,
+      code: cat.code,
+      name: cat.name,
+      description: cat.description || null,
+      csp_share_percent: cat.cspSharePercent,
+      corporate_share_percent: cat.corporateSharePercent,
+      is_active: cat.isActive,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('csmp_csp_categories')
+      .upsert(payload, { onConflict: 'code' });
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('Could not persist CSP category to Supabase:', err?.message);
+  }
+}
+
+// -------------------------------------------------------------
+// TRANSACTION TYPE MANAGEMENT: Per-type Rural/Urban split %
+// -------------------------------------------------------------
+
+function inferTxCategory(name: string): TransactionTypeDefinition['category'] {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('pmjjby') || lower.includes('pmsby') || lower.includes('apy') || lower.includes('har ghar suraksha')) {
+    return 'social_security';
+  }
+  if (lower.includes('open') || lower.includes('opening') || lower.includes('ekyc')) {
+    return 'onboarding';
+  }
+  if (lower.includes('loan')) {
+    return 'credit';
+  }
+  if (
+    lower.includes('withdrawal') || lower.includes('deposit') || lower.includes('transfer') ||
+    lower.includes('card') || lower.includes('matm') || lower.includes('aeps') || lower.includes('atm') || lower.includes('remittance')
+  ) {
+    return 'banking';
+  }
+  return 'other';
+}
+
+export async function fetchTransactionTypesFromSupabase(): Promise<TransactionTypeDefinition[]> {
+  const localTypes = getStoredTransactionTypes();
+  if (!isSupabaseConfigured) return localTypes;
+
+  try {
+    const { data, error } = await supabase
+      .from('csmp_transaction_type')
+      .select('*')
+      .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    if (data && data.length > 0) {
+      // Preserve richer local metadata (category descriptor) where a row matches
+      const localByName = new Map(localTypes.map(t => [(t.name || '').trim().toLowerCase(), t]));
+      const types: TransactionTypeDefinition[] = data.map((r: any) => {
+        const local = localByName.get((r.name || '').trim().toLowerCase());
+        return {
+          id: r.id,
+          code: r.tx_type || local?.code || (r.name || '').toUpperCase().replace(/[^A-Z0-9]/g, '_'),
+          name: r.name,
+          category: local?.category || inferTxCategory(r.name),
+          description: r.description || local?.description || undefined,
+          transactionRuralSplit: r.transaction_rural_split != null ? Number(r.transaction_rural_split) : undefined,
+          transactionUrbanSplit: r.transaction_urban_split != null ? Number(r.transaction_urban_split) : undefined,
+          isActive: r.is_active ?? true,
+        };
+      });
+      saveTransactionTypes(types);
+      return types;
+    }
+
+    return localTypes;
+  } catch (err: any) {
+    console.warn('Supabase fetchTransactionTypes offline, using fallback:', err?.message);
+    return localTypes;
+  }
+}
+
+export async function saveTransactionTypeToSupabase(tt: TransactionTypeDefinition): Promise<void> {
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const payload = {
+      id: tt.id,
+      name: tt.name,
+      description: tt.description || null,
+      tx_type: tt.code,
+      transaction_rural_split: tt.transactionRuralSplit ?? 70,
+      transaction_urban_split: tt.transactionUrbanSplit ?? 70,
+      is_active: tt.isActive,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('csmp_transaction_type')
+      .upsert(payload, { onConflict: 'id' });
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('Could not persist transaction type to Supabase:', err?.message);
+  }
+}
+
+export async function deleteTransactionTypeFromSupabase(ttId: string): Promise<void> {
+  if (!isSupabaseConfigured) return;
+
+  try {
+    const { error } = await supabase
+      .from('csmp_transaction_type')
+      .delete()
+      .eq('id', ttId);
+    if (error) throw error;
+  } catch (err: any) {
+    console.warn('Could not delete transaction type from Supabase:', err?.message);
+  }
+}
+

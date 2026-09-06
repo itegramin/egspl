@@ -403,6 +403,19 @@ export const ClientDirectory: React.FC = () => {
                           <div className="font-medium text-slate-600 dark:text-slate-300 truncate max-w-[120px]">
                             {targetUser.role === 'client' ? (targetUser.kioskId || '—') : '—'}
                           </div>
+                          {targetUser.role === 'client' && (
+                            <div className="mt-1">
+                              <span
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  (targetUser.category || 'rural').toLowerCase() === 'urban'
+                                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
+                                }`}
+                              >
+                                {(targetUser.category || 'rural').toUpperCase()}
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Role */}

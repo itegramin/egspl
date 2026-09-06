@@ -251,6 +251,21 @@ function getViewTitle(viewType: DownloadViewType): string {
   }
 }
 
+/**
+ * Strict HTML entity-encoding — prevents any record field value (which is
+ * ultimately client-derived) from breaking out of a <td>/<th> and executing
+ * as markup.  Title and headers already come from enums/codes, but we escape
+ * them defensively too.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 function triggerPDFPrint(records: (ServiceRequest | AuditLog | Notification)[], viewType: DownloadViewType) {
   const title = getViewTitle(viewType);
   const flattened = records.map(r => recordToFlat(r, viewType));
@@ -258,14 +273,14 @@ function triggerPDFPrint(records: (ServiceRequest | AuditLog | Notification)[], 
   const headers = Object.keys(flattened[0]);
 
   const tableRows = flattened.map((r, i) =>
-    `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'}">${headers.map(h => `<td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:10px;vertical-align:top;">${r[h] ?? ''}</td>`).join('')}</tr>`
+    `<tr style="background:${i % 2 === 0 ? '#ffffff' : '#f8fafc'}">${headers.map(h => `<td style="padding:5px 8px;border:1px solid #e2e8f0;font-size:10px;vertical-align:top;">${escapeHtml(r[h])}</td>`).join('')}</tr>`
   ).join('');
 
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <title>${title} - E-Gramin CSMP</title>
+      <title>${escapeHtml(title)} - E-Gramin CSMP</title>
       <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; padding: 24px; color: #0f172a; }
         .header { border-bottom: 2px solid #059669; padding-bottom: 12px; margin-bottom: 16px; }
@@ -283,11 +298,11 @@ function triggerPDFPrint(records: (ServiceRequest | AuditLog | Notification)[], 
     <body>
       <div class="header">
         <div class="brand">E-Gramin Client Service Management Platform (CSMP)</div>
-        <h1>${title}</h1>
+        <h1>${escapeHtml(title)}</h1>
         <div class="meta">Exported on: ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST &nbsp;|&nbsp; Total Records: <strong>${records.length}</strong></div>
       </div>
       <table>
-        <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+        <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
     </body>

@@ -18,7 +18,8 @@ import {
   Store,
   Eye,
   EyeOff,
-  Lock
+  Lock,
+  MapPin,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -36,7 +37,7 @@ const AVATAR_PRESETS = [
 
 export const EditProfileModal: React.FC = () => {
   const { user, isProfileModalOpen, closeProfileModal, updateUserProfile } = useAuth();
-  const { toast } = useApp();
+  const { toast, cspCategories } = useApp();
 
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -46,6 +47,7 @@ export const EditProfileModal: React.FC = () => {
   const [bankCode, setBankCode] = useState('');
   const [currency, setCurrency] = useState('INR');
   const [kioskId, setKioskId] = useState('');
+  const [category, setCategory] = useState<'rural' | 'urban' | string>('rural');
   const [showAccountNo, setShowAccountNo] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState('');
   const [isCustomAvatar, setIsCustomAvatar] = useState(false);
@@ -63,6 +65,7 @@ export const EditProfileModal: React.FC = () => {
       setBankCode(user.ifsc || '');
       setCurrency(user.currency || 'INR');
       setKioskId(user.kioskId || '');
+      setCategory(user.category || 'rural');
       setAvatarUrl(user.avatarUrl || '');
       setIsCustomAvatar(!AVATAR_PRESETS.includes(user.avatarUrl));
     }
@@ -87,6 +90,7 @@ export const EditProfileModal: React.FC = () => {
         bank: bankName.trim() || undefined,
         ifsc: bankCode.trim() || undefined,
         kioskId: kioskId.trim() || undefined,
+        category: category.trim() || 'rural',
         currency,
         avatarUrl: avatarUrl.trim() || user.avatarUrl,
       });
@@ -368,6 +372,36 @@ export const EditProfileModal: React.FC = () => {
                         className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                       />
                     </div>
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      CSP Area Category *
+                    </label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500" />
+                      <select
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer font-medium"
+                      >
+                        {cspCategories && cspCategories.length > 0 ? (
+                          cspCategories.map((c) => (
+                            <option key={c.id || c.code} value={c.code}>
+                              {c.name} — {c.cspSharePercent}% Base CSP Commission Share
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="rural">Rural — 75% Base CSP Commission Share</option>
+                            <option value="urban">Urban — 70% Base CSP Commission Share</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Commission split share is differentiated by kiosk operating location (Rural CSPs receive 75% base share; Urban CSPs receive 70%).
+                    </p>
                   </div>
                 </div>
               )}

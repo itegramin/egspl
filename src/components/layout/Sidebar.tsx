@@ -19,6 +19,8 @@ import {
   Globe,
   ExternalLink,
   X,
+  BadgePercent,
+  Tags,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NavLink } from 'react-router-dom';
@@ -81,6 +83,16 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
     icon: Users,
   },
   {
+    id: 'commissions',
+    label: 'Commission Reports',
+    icon: BadgePercent,
+  },
+  {
+    id: 'transaction-types',
+    label: 'Transaction Types',
+    icon: Tags,
+  },
+  {
     id: 'analytics',
     label: 'Analytics',
     icon: BarChart3,
@@ -108,10 +120,11 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Hardcoded role navigation permissions array
-// ─────────────────────────────────────────────────────────────────────────────
-const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
+// Used ONLY as the fallback initial seed for DEFAULT_PERMISSIONS/SUPABASE.
+// At runtime the Sidebar reads from AppContext.allowedPages (which reflects
+// the persisted csmp_role_permissions.allowed_pages and local cache).
+export const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
   admin: [
     'dashboard',
     'support',
@@ -119,6 +132,8 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'all-requests',
     'assignments',
     'clients',
+    'commissions',
+    'transaction-types',
     'analytics',
     'rbac',
     'audit-logs',
@@ -131,6 +146,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'holding',
     'all-requests',
     'assignments',
+    'commissions',
     'analytics',
     'notifications',
   ],
@@ -138,6 +154,7 @@ const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
     'dashboard',
     'support',
     'holding',
+    'commissions',
     'notifications'
   ],
 };
@@ -153,10 +170,9 @@ export const Sidebar: React.FC = () => {
     isMobileSidebarOpen,
     closeMobileSidebar,
     themeConfig,
+    allowedPages,
   } = useApp();
-  const userRole = user?.role || 'client';
-  const allowedPageIds = ROLE_ALLOWED_PAGES[userRole] || ROLE_ALLOWED_PAGES.client;
-  const visibleNavItems = ALL_NAV_ITEMS.filter(item => allowedPageIds.includes(item.id));
+  const visibleNavItems = ALL_NAV_ITEMS.filter(item => allowedPages.includes(item.id));
 
   const SidebarContent = (
     <div className="p-4 flex flex-col justify-between h-full">
