@@ -17,9 +17,6 @@ dist-ssr/
 .env.*
 !.env.example
 
-# Supabase local CA certificate (developer-local, contains private CA — do not commit)
-supabase/supabase-ca.crt
-
 # Logs & diagnostic reports
 logs
 *.log
@@ -46,5 +43,7 @@ Thumbs.db
 audit_tmp.json
 results/
 scratch/
-# Strix AI (AI-generated code)
-strix_runs/*
+test-results/
+
+# Turbo / build caches
+.turbo/

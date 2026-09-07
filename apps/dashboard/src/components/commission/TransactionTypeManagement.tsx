@@ -601,4 +601,3 @@ export const TransactionTypeManagement: React.FC = () => {
   );
 };
 
-export default TransactionTypeManagement;

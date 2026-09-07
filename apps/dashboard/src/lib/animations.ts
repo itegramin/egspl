@@ -56,11 +56,3 @@ export const fadeIn: Variants = {
   visible: { opacity: 1, transition: { duration: 0.5, ease: 'easeOut' } },
 };
 
-/** Standard viewport config so reveal-on-scroll only plays once. */
-export const viewportOnce = { once: true, margin: '-60px' } as const;
-
-/** Single shared spring for hover micro-interactions (e.g. card lift). */
-export const hoverLift = {
-  y: -4,
-  transition: { type: 'spring' as const, stiffness: 400, damping: 22 },
-};

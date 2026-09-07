@@ -122,43 +122,6 @@ const ALL_NAV_ITEMS: NavItemConfig[] = [
 
 // Hardcoded role navigation permissions array
 // Used ONLY as the fallback initial seed for DEFAULT_PERMISSIONS/SUPABASE.
-// At runtime the Sidebar reads from AppContext.allowedPages (which reflects
-// the persisted csmp_role_permissions.allowed_pages and local cache).
-export const ROLE_ALLOWED_PAGES: Record<string, PageId[]> = {
-  admin: [
-    'dashboard',
-    'support',
-    'holding',
-    'all-requests',
-    'assignments',
-    'clients',
-    'commissions',
-    'transaction-types',
-    'analytics',
-    'rbac',
-    'audit-logs',
-    'notifications',
-    'settings',
-  ],
-  operator: [
-    'dashboard',
-    'support',
-    'holding',
-    'all-requests',
-    'assignments',
-    'commissions',
-    'analytics',
-    'notifications',
-  ],
-  client: [
-    'dashboard',
-    'support',
-    'holding',
-    'commissions',
-    'notifications'
-  ],
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Sidebar Component
 // ─────────────────────────────────────────────────────────────────────────────

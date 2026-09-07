@@ -61,8 +61,7 @@ When making any code changes, all AI agents **must strictly adhere** to the foll
 | **Animations** | [Motion](https://motion.dev/) | `motion/react` (Framer Motion v12) + `src/lib/animations.ts` |
 | **Visualizations** | [Recharts v3](https://recharts.org/) | Responsive charts in `AnalyticsView.tsx` and `DashboardOverview.tsx` |
 | **Backend & DB** | [Supabase](https://supabase.com/) | `@supabase/supabase-js` v2 (Auth, PostgreSQL, Realtime, Storage) |
-| **Migrations** | `tsx` + `pg` | Runner in `scripts/migrate.ts` executing `supabase/schema.sql` |
-| **CI/CD & Cloud** | Azure Static Web Apps | GitHub Actions workflow in `.github/workflows/azure-static-web-apps.yml` |
+| **CI/CD & Cloud** | Azure Static Web Apps | GitHub Actions workflow in `.github/workflows/deploy.yml` |
 
 ---
 
@@ -159,7 +158,7 @@ To add a new module (e.g. `reports`), follow these exact 5 steps:
 3. **Update UI Form**:
    - Add input in `src/components/requests/CreateRequestModal.tsx`.
    - Add display section in `src/components/requests/RequestDetailModal.tsx`.
-4. **Update DB Schema**: If this column persists to PostgreSQL, append `ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS <col_name> TEXT;` in `supabase/schema.sql`.
+4. **Update DB Schema**: If this column persists to PostgreSQL, run the migration via Supabase SQL Editor (or present the `ALTER TABLE csmp_requests ADD COLUMN IF NOT EXISTS <col_name> TEXT;` statement to the team).
 
 ### Recipe 3: Checking Permissions in UI Components
 ```tsx

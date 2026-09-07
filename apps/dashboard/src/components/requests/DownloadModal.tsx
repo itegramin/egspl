@@ -23,13 +23,13 @@ import {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-export interface StaffUser {
+interface StaffUser {
   id: string;
   name: string;
   role: string;
 }
 
-export type DownloadViewType =
+type DownloadViewType =
   | 'support'
   | 'deposit'
   | 'withdrawal'
