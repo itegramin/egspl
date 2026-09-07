@@ -46,3 +46,5 @@ Thumbs.db
 audit_tmp.json
 results/
 scratch/
+# Strix AI (AI-generated code)
+strix_runs/*
