@@ -1,105 +1,52 @@
-import React, { useState } from 'react';
-import { Mail, Phone, MapPin, Send, CheckCircle2 } from 'lucide-react';
+import React from 'react';
+
+import mapImg from '../assets/images/map.jpg';
 
 export const ContactPage: React.FC = () => {
-  const [form, setForm] = useState({ name: '', email: '', message: '' });
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitted(true);
-    setForm({ name: '', email: '', message: '' });
-    setTimeout(() => setSubmitted(false), 4000);
-  };
-
   return (
-    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-      <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-3">Contact Us</h1>
-        <p className="text-slate-400 max-w-2xl mx-auto">
-          Have questions? We'd love to hear from you.
-        </p>
-      </div>
+    <main className="bg-white py-16">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <h3 className="text-2xl md:text-3xl font-bold text-slate-900">
+          Contact <span className="text-[#1b8c4e]">Us</span>
+        </h3>
+        <div className="mt-2 h-1 w-12 rounded bg-[#d96305]" />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        <div className="space-y-6">
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <Mail className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="font-medium mb-1">Email</h3>
-              <p className="text-sm text-slate-400">support@egraminservices.com</p>
+        <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
+          <div>
+            <p className="text-[15px] text-slate-600 mb-6">You can reach us through below given means.</p>
+            <div className="space-y-5">
+              <div className="flex items-start gap-3">
+                <span className="text-xl">🏠</span>
+                <div>
+                  <strong className="block text-slate-900 text-sm mb-1">e-Gramin Services Pvt. Ltd</strong>
+                  <p className="text-sm text-slate-600 leading-relaxed">
+                    House No. 39, Sapta Swahid Path<br />
+                    Dispur, Guwahati - 781006<br />
+                    Assam, India
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-xl">✉</span>
+                <div>
+                  <strong className="block text-slate-900 text-sm mb-1">Email Address</strong>
+                  <p className="text-sm text-slate-600">helpdesk[dot]egramin[at]gmail[dot]com</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="text-xl">📞</span>
+                <div>
+                  <strong className="block text-slate-900 text-sm mb-1">Phone Helpdesk</strong>
+                  <p className="text-sm text-slate-600">0361-3511441</p>
+                </div>
+              </div>
             </div>
           </div>
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <Phone className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="font-medium mb-1">Phone</h3>
-              <p className="text-sm text-slate-400">+91 00000 00000</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <MapPin className="w-5 h-5 text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="font-medium mb-1">Office</h3>
-              <p className="text-sm text-slate-400">India</p>
-            </div>
+
+          <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">
+            <img src={mapImg} alt="e-Gramin Location Map" className="w-full h-auto object-cover" />
           </div>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {submitted && (
-            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span className="text-emerald-300 text-sm">Message sent! We'll get back to you soon.</span>
-            </div>
-          )}
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Name</label>
-            <input
-              type="text"
-              required
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              placeholder="Your name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Email</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              placeholder="you@example.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Message</label>
-            <textarea
-              required
-              rows={5}
-              value={form.message}
-              onChange={(e) => setForm({ ...form, message: e.target.value })}
-              className="w-full px-4 py-2.5 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
-              placeholder="How can we help?"
-            />
-          </div>
-          <button
-            type="submit"
-            className="inline-flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-medium rounded-lg px-6 py-3 transition-all"
-          >
-            Send Message
-            <Send className="w-4 h-4" />
-          </button>
-        </form>
       </div>
     </main>
   );
