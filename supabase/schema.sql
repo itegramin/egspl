@@ -165,6 +165,7 @@ DROP POLICY IF EXISTS "Public access to csmp_role_permissions" ON csmp_role_perm
 DROP POLICY IF EXISTS "Public access to csmp_notifications" ON csmp_notifications;
 DROP POLICY IF EXISTS "Public access to csmp_audit_logs" ON csmp_audit_logs;
 DROP POLICY IF EXISTS "csmp_users_select_policy" ON csmp_users;
+DROP POLICY IF EXISTS "csmp_users_select_policy_v2" ON csmp_users;
 DROP POLICY IF EXISTS "csmp_users_insert_policy" ON csmp_users;
 DROP POLICY IF EXISTS "csmp_users_update_policy" ON csmp_users;
 DROP POLICY IF EXISTS "csmp_users_delete_policy" ON csmp_users;
@@ -213,15 +214,27 @@ $$;
 -- -------------------------------------------------------------
 -- 1. csmp_users POLICIES
 -- -------------------------------------------------------------
--- Admins/Operators can view all users; Clients can view their own profile and operator/admin public profiles
+-- F-02 hardening: clients read only their own row; operators read their own
+-- row plus clients whose requests they handle; admins read all.
+-- GUARDRAIL: write triggers (protect_user_fields, protect_user_fields_on_insert)
+-- and the UNIQUE INDEX on auth_user_id are NOT changed.
 CREATE POLICY "csmp_users_select_policy" ON csmp_users
   FOR SELECT USING (
     auth.role() = 'service_role'
-    OR public.get_auth_role() IN ('admin', 'operator')
+    -- Admins see all rows
+    OR public.get_auth_role() = 'admin'
+    -- Any authenticated user can read their own profile row
     OR auth_user_id = auth.uid()
     OR id = public.get_auth_user_id()
-    -- Allow reading operator/admin profiles for display purposes (assignments etc.)
-    OR (auth.role() = 'authenticated' AND role IN ('operator', 'admin'))
+    -- Operators can read client rows whose requests they are assigned to
+    OR (
+      public.get_auth_role() = 'operator'
+      AND EXISTS (
+        SELECT 1 FROM public.csmp_requests r
+        WHERE r.assigned_operator_id = public.get_auth_user_id()
+          AND r.client_id = csmp_users.id
+      )
+    )
   );
 
 -- Security: non-admin inserts are constrained to client/pending (trigger backstops this too, but we enforce at both layers)
@@ -712,7 +725,9 @@ CREATE POLICY "csmp-settings-write" ON csmp_settings
     EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
   );
 
-GRANT ALL ON TABLE csmp_settings TO authenticated, service_role;
+-- Revoke anon: RLS already blocks anon, but GRANT should be clean too.
+REVOKE ALL ON TABLE csmp_settings FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE csmp_settings TO authenticated, service_role;
 
 -- -------------------------------------------------------------
 -- 7. COMMISSION REPORTING TABLES (CSP Splits, TDS & Reports)
@@ -742,9 +757,24 @@ CREATE INDEX IF NOT EXISTS idx_commission_records_csp_ym ON csmp_commission_reco
 
 ALTER TABLE csmp_commission_records ENABLE ROW LEVEL SECURITY;
 
+-- F-03 hardening: scope commission record reads to the caller's CSP.
+-- Admin / service_role → all rows.
+-- Operator → all rows (operators run cross-CSP reports).
+-- Client → only rows where csp_code matches their kiosk_id (null kiosk_id = no rows).
+-- Anon → nothing (no arm matches unauthenticated sessions).
 DROP POLICY IF EXISTS "csmp-commissions-read" ON csmp_commission_records;
 CREATE POLICY "csmp-commissions-read" ON csmp_commission_records
-  FOR SELECT USING (auth.role() IN ('authenticated', 'service_role'));
+  FOR SELECT USING (
+    auth.role() = 'service_role'
+    OR public.get_auth_role() IN ('admin', 'operator')
+    -- Clients see only their own CSP's commission records (joined via kiosk_id = csp_code)
+    OR EXISTS (
+      SELECT 1 FROM public.csmp_users u
+      WHERE u.auth_user_id = auth.uid()
+        AND u.kiosk_id IS NOT NULL
+        AND u.kiosk_id = csmp_commission_records.csp_code
+    )
+  );
 
 DROP POLICY IF EXISTS "csmp-commissions-write" ON csmp_commission_records;
 CREATE POLICY "csmp-commissions-write" ON csmp_commission_records
@@ -756,7 +786,9 @@ CREATE POLICY "csmp-commissions-write" ON csmp_commission_records
     EXISTS (SELECT 1 FROM public.csmp_users WHERE auth_user_id = auth.uid() AND role = 'admin')
   );
 
-GRANT ALL ON TABLE csmp_commission_records TO authenticated, service_role;
+-- Revoke anon: commission financial data must never be reachable without auth.
+REVOKE ALL ON TABLE csmp_commission_records FROM anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE csmp_commission_records TO authenticated, service_role;
 
 -- Commission Split & TDS Configuration Table
 CREATE TABLE IF NOT EXISTS csmp_commission_configs (

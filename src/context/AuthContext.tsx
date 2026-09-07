@@ -411,6 +411,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: error.message };
       }
 
+      // F-01: When Supabase's "Protect against email enumeration" setting is ON,
+      // signUp() returns no error AND no user/session for already-registered emails.
+      // We treat this as a successful signup and show the same confirmation message
+      // so the UI is indistinguishable whether the email was new or already registered.
+      if (!data.user) {
+        return {
+          success: true,
+          message: 'Sign up successful! Please check your email or wait for administrator approval.',
+        };
+      }
+
       if (data.user) {
         const newUser: User = {
           id: `usr_${data.user.id.substring(0, 8)}`,
