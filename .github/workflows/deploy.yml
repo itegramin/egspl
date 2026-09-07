@@ -1,0 +1,283 @@
+name: Deploy All Apps
+
+on:
+  push:
+    branches:
+      - uat
+      - prod
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - prod
+
+jobs:
+  # -------------------------------------------------------------
+  # 0. RLS Regression Guard
+  # -------------------------------------------------------------
+  rls_regression:
+    if: |
+      (github.event_name == 'pull_request' && github.base_ref == 'prod' && github.event.action != 'closed') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/prod')
+    runs-on: ubuntu-latest
+    name: RLS Policy Regression Guard
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Install Playwright browsers
+        run: pnpm --filter @egspl/dashboard exec npx playwright install --with-deps chromium
+
+      - name: Run RLS regression tests
+        run: pnpm --filter @egspl/dashboard exec npx playwright test e2e/rls-policy.spec.ts --reporter=list
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+  # -------------------------------------------------------------
+  # 1. Deploy Landing (UAT)
+  # -------------------------------------------------------------
+  deploy_landing_uat:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/uat'
+    runs-on: ubuntu-latest
+    name: Deploy Landing UAT
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Landing
+        run: pnpm --filter @egspl/landing build
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_LANDING_UAT }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "apps/landing/dist"
+          api_location: ""
+          output_location: ""
+
+  # -------------------------------------------------------------
+  # 2. Deploy Auth (UAT)
+  # -------------------------------------------------------------
+  deploy_auth_uat:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/uat'
+    runs-on: ubuntu-latest
+    name: Deploy Auth UAT
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Auth
+        run: pnpm --filter @egspl/auth build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_AUTH_UAT }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "apps/auth/dist"
+          api_location: ""
+          output_location: ""
+
+  # -------------------------------------------------------------
+  # 3. Deploy Dashboard (UAT)
+  # -------------------------------------------------------------
+  deploy_dashboard_uat:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/uat'
+    runs-on: ubuntu-latest
+    name: Deploy Dashboard UAT
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Dashboard
+        run: pnpm --filter @egspl/dashboard build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_DASHBOARD_UAT }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "apps/dashboard/dist"
+          api_location: ""
+          output_location: ""
+
+  # -------------------------------------------------------------
+  # 4. Deploy Landing (Prod)
+  # -------------------------------------------------------------
+  deploy_landing_prod:
+    if: (github.event_name == 'pull_request' && github.base_ref == 'prod' && github.event.action != 'closed') || (github.event_name == 'push' && github.ref == 'refs/heads/prod')
+    needs: rls_regression
+    runs-on: ubuntu-latest
+    name: Deploy Landing Prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Landing
+        run: pnpm --filter @egspl/landing build
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_LANDING_PROD }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "apps/landing/dist"
+          api_location: ""
+          output_location: ""
+
+  # -------------------------------------------------------------
+  # 5. Deploy Auth (Prod)
+  # -------------------------------------------------------------
+  deploy_auth_prod:
+    if: (github.event_name == 'pull_request' && github.base_ref == 'prod' && github.event.action != 'closed') || (github.event_name == 'push' && github.ref == 'refs/heads/prod')
+    needs: rls_regression
+    runs-on: ubuntu-latest
+    name: Deploy Auth Prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Auth
+        run: pnpm --filter @egspl/auth build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_AUTH_PROD }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "apps/auth/dist"
+          api_location: ""
+          output_location: ""
+
+  # -------------------------------------------------------------
+  # 6. Deploy Dashboard (Prod)
+  # -------------------------------------------------------------
+  deploy_dashboard_prod:
+    if: (github.event_name == 'pull_request' && github.base_ref == 'prod' && github.event.action != 'closed') || (github.event_name == 'push' && github.ref == 'refs/heads/prod')
+    needs: rls_regression
+    runs-on: ubuntu-latest
+    name: Deploy Dashboard Prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Dashboard
+        run: pnpm --filter @egspl/dashboard build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_DASHBOARD_PROD }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "apps/dashboard/dist"
+          api_location: ""
+          output_location: ""
