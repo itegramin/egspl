@@ -179,12 +179,15 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // Auth screen
+  // Auth screen — these routes now live on the authentication subdomain.
+  // If a user lands here, redirect them to auth.egraminservices.com.
   if (pathname === 'auth' || pathname === 'login' || pathname === 'signin' || pathname === 'signup') {
+    const authBase = import.meta.env.VITE_AUTH_URL || 'https://auth.egraminservices.com';
+    const target = pathname === 'signup' || pathname === 'signin' ? 'signup' : 'login';
+    window.location.replace(`${authBase}/${target}`);
     return (
       <>
-        <AuthScreen />
-        <Toast />
+        <LoadingScreen />
       </>
     );
   }
