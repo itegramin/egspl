@@ -1,0 +1,16 @@
+{
+  "name": "@egspl/supabase",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
+    "react": "^19.0.1",
+    "react-router-dom": "^7.18.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "typescript": "~5.8.2"
+  }
+}
