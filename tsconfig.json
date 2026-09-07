@@ -4,30 +4,25 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
+    "paths": { "@/*": ["./*"] },
     "allowImportingTsExtensions": true,
-    "noEmit": true,
-    "types": [
-      "vite/client",
-      "node"
-    ]
+    "noEmit": false,
+    "types": ["vite/client", "node"]
   },
-  "include": [
-    "src"
-  ]
+  "references": [
+    { "path": "./packages/config" },
+    { "path": "./packages/supabase" },
+    { "path": "./packages/ui" },
+    { "path": "./apps/dashboard" },
+    { "path": "./apps/auth" },
+    { "path": "./apps/landing" }
+  ],
+  "files": []
 }
