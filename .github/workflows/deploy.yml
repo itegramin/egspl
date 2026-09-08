@@ -37,10 +37,10 @@ jobs:
         run: pnpm install
 
       - name: Install Playwright browsers
-        run: pnpm --filter @egspl/dashboard exec npx playwright install --with-deps chromium
+        run: pnpm --filter @egspl/dashboard exec playwright install --with-deps chromium
 
       - name: Run RLS regression tests
-        run: pnpm --filter @egspl/dashboard exec npx playwright test e2e/rls-policy.spec.ts --reporter=list
+        run: pnpm --filter @egspl/dashboard exec playwright test ../../e2e/rls-policy.spec.ts --config ../../playwright.config.ts --reporter=list
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -71,16 +71,17 @@ jobs:
 
       - name: Build Landing
         run: pnpm --filter @egspl/landing build
+        env:
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL_UAT }}
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL_UAT }}
 
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Azure App Service
+        uses: Azure/webapps-deploy@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_LANDING_UAT }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "apps/landing/dist"
-          api_location: ""
-          output_location: ""
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_LANDING_UAT }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_LANDING_UAT }}
+          package: apps/landing/dist
+          startup-command: node server.cjs
 
   # -------------------------------------------------------------
   # 2. Deploy Auth (UAT)
@@ -109,18 +110,21 @@ jobs:
       - name: Build Auth
         run: pnpm --filter @egspl/auth build
         env:
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL_UAT }}
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL_UAT }}
+          VITE_LANDING_URL: ${{ vars.VITE_LANDING_URL_UAT }}
+          VITE_AUTH_COOKIE_DOMAIN: ${{ vars.VITE_AUTH_COOKIE_DOMAIN_UAT || '.egraminservices.com' }}
+          VITE_AUTH_STORAGE_KEY: sb-auth-token-uat
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Azure App Service
+        uses: Azure/webapps-deploy@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_AUTH_UAT }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "apps/auth/dist"
-          api_location: ""
-          output_location: ""
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_AUTH_UAT }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_AUTH_UAT }}
+          package: apps/auth/dist
+          startup-command: node server.cjs
 
   # -------------------------------------------------------------
   # 3. Deploy Dashboard (UAT)
@@ -149,18 +153,21 @@ jobs:
       - name: Build Dashboard
         run: pnpm --filter @egspl/dashboard build
         env:
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL_UAT }}
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL_UAT }}
+          VITE_LANDING_URL: ${{ vars.VITE_LANDING_URL_UAT }}
+          VITE_AUTH_COOKIE_DOMAIN: ${{ vars.VITE_AUTH_COOKIE_DOMAIN_UAT || '.egraminservices.com' }}
+          VITE_AUTH_STORAGE_KEY: sb-auth-token-uat
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Azure App Service
+        uses: Azure/webapps-deploy@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_DASHBOARD_UAT }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "apps/dashboard/dist"
-          api_location: ""
-          output_location: ""
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_DASHBOARD_UAT }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DASHBOARD_UAT }}
+          package: apps/dashboard/dist
+          startup-command: node server.cjs
 
   # -------------------------------------------------------------
   # 4. Deploy Landing (Prod)
@@ -189,16 +196,17 @@ jobs:
 
       - name: Build Landing
         run: pnpm --filter @egspl/landing build
+        env:
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL_PROD }}
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL_PROD }}
 
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Azure App Service
+        uses: Azure/webapps-deploy@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_LANDING_PROD }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "apps/landing/dist"
-          api_location: ""
-          output_location: ""
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_LANDING_PROD }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_LANDING_PROD }}
+          package: apps/landing/dist
+          startup-command: node server.cjs
 
   # -------------------------------------------------------------
   # 5. Deploy Auth (Prod)
@@ -228,18 +236,21 @@ jobs:
       - name: Build Auth
         run: pnpm --filter @egspl/auth build
         env:
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL_PROD }}
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL_PROD }}
+          VITE_LANDING_URL: ${{ vars.VITE_LANDING_URL_PROD }}
+          VITE_AUTH_COOKIE_DOMAIN: ${{ vars.VITE_AUTH_COOKIE_DOMAIN_PROD || '.egraminservices.com' }}
+          VITE_AUTH_STORAGE_KEY: sb-auth-token-prod
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Azure App Service
+        uses: Azure/webapps-deploy@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_AUTH_PROD }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "apps/auth/dist"
-          api_location: ""
-          output_location: ""
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_AUTH_PROD }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_AUTH_PROD }}
+          package: apps/auth/dist
+          startup-command: node server.cjs
 
   # -------------------------------------------------------------
   # 6. Deploy Dashboard (Prod)
@@ -269,15 +280,18 @@ jobs:
       - name: Build Dashboard
         run: pnpm --filter @egspl/dashboard build
         env:
+          VITE_AUTH_URL: ${{ vars.VITE_AUTH_URL_PROD }}
+          VITE_DASHBOARD_URL: ${{ vars.VITE_DASHBOARD_URL_PROD }}
+          VITE_LANDING_URL: ${{ vars.VITE_LANDING_URL_PROD }}
+          VITE_AUTH_COOKIE_DOMAIN: ${{ vars.VITE_AUTH_COOKIE_DOMAIN_PROD || '.egraminservices.com' }}
+          VITE_AUTH_STORAGE_KEY: sb-auth-token-prod
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
-      - name: Deploy to Azure Static Web Apps
-        uses: Azure/static-web-apps-deploy@v1
+      - name: Deploy to Azure App Service
+        uses: Azure/webapps-deploy@v3
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_DASHBOARD_PROD }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "apps/dashboard/dist"
-          api_location: ""
-          output_location: ""
+          app-name: ${{ vars.AZURE_WEBAPP_NAME_DASHBOARD_PROD }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_DASHBOARD_PROD }}
+          package: apps/dashboard/dist
+          startup-command: node server.cjs

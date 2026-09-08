@@ -75,6 +75,7 @@ export const supabase: SupabaseClient = isSupabaseConfigured
       // cookie is only sent over HTTPS. The cookie Max-Age (15 min) mirrors
       // the inactivity timeout enforced by SessionContext.
       persistSession: true,
+      storageKey: import.meta.env.VITE_AUTH_STORAGE_KEY || 'sb-auth-token',
       storage: cookieStorageAdapter,
       autoRefreshToken: true,
       detectSessionInUrl: true,

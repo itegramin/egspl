@@ -1,14 +1,17 @@
 const COOKIE_PREFIX = 'sb-';
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+const COOKIE_DOMAIN = import.meta.env.VITE_AUTH_COOKIE_DOMAIN || '.egraminservices.com';
 
-function isProductionHost(): boolean {
-    return typeof window !== 'undefined' && window.location.hostname.endsWith('.egraminservices.com');
+function isSharedCookieHost(): boolean {
+    if (typeof window === 'undefined') return false;
+    const domain = COOKIE_DOMAIN.replace(/^\./, '');
+    return Boolean(domain) && (window.location.hostname === domain || window.location.hostname.endsWith(`.${domain}`));
 }
 
 function cookieAttributes(maxAge: number): string {
     const attributes = [`Path=/`, `Max-Age=${maxAge}`, 'SameSite=Lax'];
-    if (isProductionHost()) {
-        attributes.push('Domain=.egraminservices.com', 'Secure');
+    if (isSharedCookieHost()) {
+        attributes.push(`Domain=${COOKIE_DOMAIN}`, 'Secure');
     }
     return attributes.join('; ');
 }

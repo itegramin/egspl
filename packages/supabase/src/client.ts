@@ -16,6 +16,7 @@ export function getSupabaseClient(): SupabaseClient {
     _client = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         flowType: 'pkce',
+        storageKey: import.meta.env.VITE_AUTH_STORAGE_KEY || 'sb-auth-token',
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,

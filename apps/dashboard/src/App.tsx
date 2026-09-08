@@ -135,8 +135,22 @@ const AppAuthGate: React.FC = () => {
 
   if (!isAuthenticated || !user) {
     const authBase = import.meta.env.VITE_AUTH_URL || 'https://auth.egraminservices.com';
-    window.location.replace(`${authBase}/login`);
-    return <LoadingScreen label="Redirecting to sign in..." />;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white">Sign in to continue</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+            Your dashboard session is not available. Sign in to access requests, users, and reports.
+          </p>
+          <a
+            href={`${authBase}/login`}
+            className="mt-6 inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-emerald-500"
+          >
+            Sign in
+          </a>
+        </div>
+      </div>
+    );
   }
 
   return <MainLayout />;

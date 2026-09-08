@@ -70,9 +70,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const navigate = useNavigate();
   const [allUsers, setAllUsers] = useState<User[]>([]);
 
-  // Auth state is NOT seeded from localStorage — it is populated entirely from
-  // Supabase's in-memory onAuthStateChange (INITIAL_SESSION event on mount).
-  // This prevents stale auth flags surviving across browser sessions.
+  // Auth state is restored by Supabase from the shared cookie storage adapter;
+  // the session listener then keeps the in-memory state synchronized.
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const [user, setUserState] = useState<User | null>(null);
@@ -143,11 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 1. Initial user sync
     syncUsers();
 
-    // 2. Check initial session — with persistSession: false Supabase does not
-    //    restore a session across page reloads from localStorage. Instead it
-    //    fires onAuthStateChange(INITIAL_SESSION) synchronously on mount, so
-    //    we listen there rather than calling getSession() separately.
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+    // 2. Restore the session from the shared auth cookie.
+    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
       if (!isMounted) return;
       if (initialSession) {
         setSession(initialSession);
@@ -156,7 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (initialSession.access_token) {
           setToken(initialSession.access_token);
         }
-        matchUserToSession(initialSession.user);
+        await matchUserToSession(initialSession.user);
       }
       setIsInitialLoading(false);
     }).catch(() => {
