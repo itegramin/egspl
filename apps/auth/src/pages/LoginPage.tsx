@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
 import { signInWithEmail } from '@egspl/supabase';
 import { AuthLayout } from '../components/AuthLayout';
+import { Captcha, CaptchaHandle } from '../components/Captcha';
 
 export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -10,21 +11,31 @@ export const LoginPage: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<CaptchaHandle>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!captchaToken) {
+      setError('Please complete the security check before signing in.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const result = await signInWithEmail(email, password);
+      const result = await signInWithEmail(email, password, captchaToken);
       if (result.success) {
         window.location.href = import.meta.env.VITE_DASHBOARD_URL || 'https://app.egraminservices.com';
       } else {
         setError(result.error || 'Login failed');
+        captchaRef.current?.reset();
       }
     } catch {
       setError('An unexpected error occurred');
+      captchaRef.current?.reset();
     } finally {
       setIsLoading(false);
     }
@@ -85,6 +96,14 @@ export const LoginPage: React.FC = () => {
           <Link to="/forgot-password" className="text-sm text-emerald-400 hover:text-emerald-300">
             Forgot password?
           </Link>
+        </div>
+
+        <div className="pt-1">
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] text-slate-500">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Security verification</span>
+          </div>
+          <Captcha ref={captchaRef} onTokenChange={setCaptchaToken} />
         </div>
 
         <button

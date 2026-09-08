@@ -117,6 +117,7 @@ jobs:
           VITE_AUTH_STORAGE_KEY: sb-auth-token-uat
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_HCAPTCHA_SITE_KEY: ${{ secrets.VITE_HCAPTCHA_SITE_KEY || vars.VITE_HCAPTCHA_SITE_KEY }}
 
       - name: Deploy to Azure App Service
         uses: Azure/webapps-deploy@v3
@@ -243,6 +244,7 @@ jobs:
           VITE_AUTH_STORAGE_KEY: sb-auth-token-prod
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_HCAPTCHA_SITE_KEY: ${{ secrets.VITE_HCAPTCHA_SITE_KEY || vars.VITE_HCAPTCHA_SITE_KEY }}
 
       - name: Deploy to Azure App Service
         uses: Azure/webapps-deploy@v3

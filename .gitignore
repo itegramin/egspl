@@ -45,8 +45,14 @@ results/
 scratch/
 test-results/
 
+# Playwright MCP browser artifacts (snapshots, console logs)
+.playwright-mcp/
+
 # Turbo / build caches
 .turbo/
 
 # Supabase
-supabase/*
+supabase/cert/*
+
+# Strix
+strix_runs/*

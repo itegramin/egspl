@@ -37,7 +37,7 @@ const AVATAR_PRESETS = [
 
 export const EditProfileModal: React.FC = () => {
   const { user, isProfileModalOpen, closeProfileModal, updateUserProfile } = useAuth();
-  const { toast, cspCategories } = useApp();
+  const { toast } = useApp();
 
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -367,40 +367,33 @@ export const EditProfileModal: React.FC = () => {
                       <input
                         type="text"
                         value={kioskId}
-                        onChange={(e) => setKioskId(e.target.value)}
+                        readOnly
+                        disabled
                         placeholder="e.g. KIOSK-091"
-                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 cursor-not-allowed"
                       />
                     </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Assigned by administrators — contact support to change.
+                    </p>
                   </div>
 
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      CSP Area Category *
+                      CSP Area Category
                     </label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500" />
-                      <select
+                      <input
+                        type="text"
                         value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:outline-none cursor-pointer font-medium"
-                      >
-                        {cspCategories && cspCategories.length > 0 ? (
-                          cspCategories.map((c) => (
-                            <option key={c.id || c.code} value={c.code}>
-                              {c.name} — {c.cspSharePercent}% Base CSP Commission Share
-                            </option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="rural">Rural — 75% Base CSP Commission Share</option>
-                            <option value="urban">Urban — 70% Base CSP Commission Share</option>
-                          </>
-                        )}
-                      </select>
+                        readOnly
+                        disabled
+                        className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 cursor-not-allowed"
+                      />
                     </div>
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Commission split share is differentiated by kiosk operating location (Rural CSPs receive 75% base share; Urban CSPs receive 70%).
+                      Commission split share is differentiated by kiosk operating location (Rural CSPs receive 75% base share; Urban CSPs receive 70%). Assigned by administrators — contact support to change.
                     </p>
                   </div>
                 </div>

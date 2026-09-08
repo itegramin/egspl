@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { signUpWithEmail } from '@egspl/supabase';
 import { AuthLayout } from '../components/AuthLayout';
+import { Captcha, CaptchaHandle } from '../components/Captcha';
 
 export const SignupPage: React.FC = () => {
   const [name, setName] = useState('');
@@ -14,6 +15,8 @@ export const SignupPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const captchaRef = useRef<CaptchaHandle>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,19 +31,25 @@ export const SignupPage: React.FC = () => {
       setError('Password must be at least 8 characters');
       return;
     }
+    if (!captchaToken) {
+      setError('Please complete the security check to create your account.');
+      return;
+    }
 
     setIsLoading(true);
     try {
-      const result = await signUpWithEmail(email, password, { name });
+      const result = await signUpWithEmail(email, password, { name }, captchaToken);
       if (result.success && result.session) {
         window.location.href = import.meta.env.VITE_DASHBOARD_URL || 'https://app.egraminservices.com';
       } else if (result.success) {
         setSuccessMsg(result.message || 'Account created! Please check your email.');
       } else {
         setError(result.error || 'Signup failed');
+        captchaRef.current?.reset();
       }
     } catch {
       setError('An unexpected error occurred');
+      captchaRef.current?.reset();
     } finally {
       setIsLoading(false);
     }
@@ -134,6 +143,14 @@ export const SignupPage: React.FC = () => {
               {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+        </div>
+
+        <div className="pt-1">
+          <div className="flex items-center gap-1.5 mb-2 text-[11px] text-slate-500">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Security verification</span>
+          </div>
+          <Captcha ref={captchaRef} onTokenChange={setCaptchaToken} />
         </div>
 
         <button

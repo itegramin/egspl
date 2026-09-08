@@ -203,15 +203,24 @@ function recordToFlat(item: ServiceRequest | AuditLog | Notification, viewType: 
 
 // ── Export Generators ──────────────────────────────────────────────────────────
 
+/**
+ * Formula / CSV injection neutralization (CWE-1236).
+ * If a cell value starts with =, +, -, @, TAB, or CR, it may be interpreted
+ * as a spreadsheet formula. Prepending a single quote forces parsers to
+ * treat the value as text. Quote-escaping is applied first, mirroring the
+ * sanitizeForCsv helper in lib/storage.ts.
+ */
+function sanitizeCsvCell(value: unknown): string {
+  const str = String(value ?? '').replace(/"/g, '""');
+  return /^[=+\-@\t\r]/.test(str) ? `"'${str}"` : `"${str}"`;
+}
+
 function generateCSV(records: (ServiceRequest | AuditLog | Notification)[], viewType: DownloadViewType): string {
   if (records.length === 0) return '';
   const flattened = records.map(r => recordToFlat(r, viewType));
   const headers = Object.keys(flattened[0]);
   const rows = flattened.map(r =>
-    headers.map(h => {
-      const val = String(r[h] ?? '').replace(/"/g, '""');
-      return `"${val}"`;
-    }).join(',')
+    headers.map(h => sanitizeCsvCell(r[h])).join(',')
   );
   return [headers.join(','), ...rows].join('\r\n');
 }

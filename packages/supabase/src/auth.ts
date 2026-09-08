@@ -1,12 +1,20 @@
 import { getSupabaseClient, isSupabaseConfigured } from './client';
 import type { Session, User as SupabaseAuthUser } from '@supabase/supabase-js';
 
-export async function signInWithEmail(email: string, password: string) {
+export async function signInWithEmail(
+  email: string,
+  password: string,
+  captchaToken?: string
+) {
   if (!isSupabaseConfigured) {
     return { success: false, error: 'Supabase not configured' };
   }
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+    options: captchaToken ? { captchaToken } : undefined,
+  });
   if (error) return { success: false, error: error.message };
   return { success: true, session: data.session, user: data.user };
 }
@@ -14,7 +22,8 @@ export async function signInWithEmail(email: string, password: string) {
 export async function signUpWithEmail(
   email: string,
   password: string,
-  metadata: { name: string; role?: string; companyName?: string; phoneNumber?: string }
+  metadata: { name: string; role?: string; companyName?: string; phoneNumber?: string },
+  captchaToken?: string
 ) {
   if (!isSupabaseConfigured) {
     return { success: false, error: 'Supabase not configured' };
@@ -23,7 +32,10 @@ export async function signUpWithEmail(
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: metadata },
+    options: {
+      data: metadata,
+      ...(captchaToken ? { captchaToken } : {}),
+    },
   });
   if (error) return { success: false, error: error.message };
   if (data.user?.identities?.length === 0) {
@@ -39,23 +51,27 @@ export async function signUpWithEmail(
   };
 }
 
-export async function signInWithOtp(email: string) {
+export async function signInWithOtp(email: string, captchaToken?: string) {
   if (!isSupabaseConfigured) {
     return { success: false, error: 'Supabase not configured' };
   }
   const supabase = getSupabaseClient();
-  const { error } = await supabase.auth.signInWithOtp({ email });
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: captchaToken ? { captchaToken } : undefined,
+  });
   if (error) return { success: false, error: error.message };
   return { success: true, message: 'Magic link sent! Check your email.' };
 }
 
-export async function resetPassword(email: string) {
+export async function resetPassword(email: string, captchaToken?: string) {
   if (!isSupabaseConfigured) {
     return { success: false, error: 'Supabase not configured' };
   }
   const supabase = getSupabaseClient();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${import.meta.env.VITE_DASHBOARD_URL}/reset-password`,
+    ...(captchaToken ? { captchaToken } : {}),
   });
   if (error) return { success: false, error: error.message };
   return { success: true, message: 'Password reset email sent! Check your inbox.' };

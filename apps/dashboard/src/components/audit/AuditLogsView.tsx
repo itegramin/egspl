@@ -128,18 +128,27 @@ export const AuditLogsView: React.FC = () => {
     setDateRangeFilter('all');
   };
 
+  /**
+   * Formula / CSV injection neutralization (CWE-1236) — quote-escapes and
+   * prefixes a single quote to values starting with =, +, -, @, TAB, or CR.
+   */
+  const csvCell = (value: unknown): string => {
+    const str = String(value ?? '').replace(/"/g, '""');
+    return /^[=+\-@\t\r]/.test(str) ? `"'${str}"` : `"${str}"`;
+  };
+
   const handleExportCSV = () => {
     if (filteredLogs.length === 0) return;
     const headers = ['Timestamp (IST)', 'Actor Name', 'Actor Role', 'Action Event', 'Target Type', 'Target ID', 'Details', 'IP Address'];
     const rows = filteredLogs.map(l => [
-      `"${formatDateTimeIST(l.timestamp)}"`,
-      `"${l.actorName || ''}"`,
-      `"${l.actorRole || ''}"`,
-      `"${l.action || ''}"`,
-      `"${l.targetType || ''}"`,
-      `"${l.targetId || ''}"`,
-      `"${(l.details || '').replace(/"/g, '""')}"`,
-      `"${l.ipAddress || ''}"`,
+      csvCell(formatDateTimeIST(l.timestamp)),
+      csvCell(l.actorName || ''),
+      csvCell(l.actorRole || ''),
+      csvCell(l.action || ''),
+      csvCell(l.targetType || ''),
+      csvCell(l.targetId || ''),
+      csvCell(l.details || ''),
+      csvCell(l.ipAddress || ''),
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

@@ -157,18 +157,27 @@ export const NotificationLogsView: React.FC = () => {
     setDateRangeFilter('all');
   };
 
+  /**
+   * Formula / CSV injection neutralization (CWE-1236) — quote-escapes and
+   * prefixes a single quote to values starting with =, +, -, @, TAB, or CR.
+   */
+  const csvCell = (value: unknown): string => {
+    const str = String(value ?? '').replace(/"/g, '""');
+    return /^[=+\-@\t\r]/.test(str) ? `"'${str}"` : `"${str}"`;
+  };
+
   const handleExportCSV = () => {
     if (filteredNotifications.length === 0) return;
     const headers = ['Timestamp (IST)', 'Title', 'Message', 'Category', 'Type', 'Target Recipient', 'Linked Request ID', 'Read Status'];
     const rows = filteredNotifications.map(n => [
-      `"${formatDateTimeIST(n.createdAt)}"`,
-      `"${(n.title || '').replace(/"/g, '""')}"`,
-      `"${(n.message || '').replace(/"/g, '""')}"`,
-      `"${n.category || ''}"`,
-      `"${n.type || ''}"`,
-      `"${n.userId || ''}"`,
-      `"${n.requestId || ''}"`,
-      `"${n.isRead ? 'Read' : 'Unread'}"`,
+      csvCell(formatDateTimeIST(n.createdAt)),
+      csvCell(n.title || ''),
+      csvCell(n.message || ''),
+      csvCell(n.category || ''),
+      csvCell(n.type || ''),
+      csvCell(n.userId || ''),
+      csvCell(n.requestId || ''),
+      csvCell(n.isRead ? 'Read' : 'Unread'),
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
