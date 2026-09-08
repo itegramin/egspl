@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { cookieStorageAdapter } from './cookieStorage';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey =
@@ -18,13 +19,7 @@ export function getSupabaseClient(): SupabaseClient {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        cookieOptions: {
-          name: 'egspl-session',
-          domain: '.egraminservices.com',
-          path: '/',
-          secure: true,
-          sameSite: 'lax',
-        },
+        storage: cookieStorageAdapter,
       },
     });
   }

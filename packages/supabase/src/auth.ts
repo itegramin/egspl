@@ -65,8 +65,6 @@ export async function signOut() {
   if (!isSupabaseConfigured) return;
   const supabase = getSupabaseClient();
   await supabase.auth.signOut();
-  // Clear the cross-subdomain cookie
-  document.cookie = 'egspl-session=; path=/; domain=.egraminservices.com; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 }
 
 export function onAuthStateChange(callback: (event: string, session: Session | null) => void) {

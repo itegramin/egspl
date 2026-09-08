@@ -38,7 +38,7 @@ export const DashboardOverview: React.FC = () => {
   const [dismissedNoticeId, setDismissedNoticeId] = useState<string | null>(null);
 
   // Role-filtered requests for metrics
-  const userVisibleReqs = requests.filter(r => user.role !== 'client' || r.clientId === user.id);
+  const userVisibleReqs = requests.filter(r => user?.role !== 'client' || r.clientId === user?.id);
 
   const pendingCount = userVisibleReqs.filter(r => r.status === 'pending').length;
   const inProgressCount = userVisibleReqs.filter(r => r.status === 'in_progress').length;
@@ -58,7 +58,7 @@ export const DashboardOverview: React.FC = () => {
   ).slice(0, 5);
 
   const canCreate = user?.role === 'client' && (permissions[user?.role || 'client']?.canCreateRequest ?? true);
-  const isStaff = user.role === 'admin' || user.role === 'operator';
+  const isStaff = user?.role === 'admin' || user?.role === 'operator';
 
 
   return (
@@ -74,19 +74,19 @@ export const DashboardOverview: React.FC = () => {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
-              {user.role} Workspace
+              {user?.role} Workspace
             </span>
             <span className="text-xs text-slate-400">
               {formatHeaderDateIST()}
             </span>
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-            Welcome back, {user.name}
+            Welcome back, {user?.name}
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-            {user.role === 'client'
+            {user?.role === 'client'
               ? 'Track your active technical support tickets and submit Holding balance update requests.'
-              : user.role === 'operator'
+              : user?.role === 'operator'
                 ? 'Review pending client requests, verify holding receipts, and manage support fulfillment.'
                 : 'Enterprise overview of service operations, SLA metrics, operator performance, and RBAC control.'}
           </p>
@@ -110,10 +110,10 @@ export const DashboardOverview: React.FC = () => {
       {/* ── Global Notice Banner (all roles, session-dismissable) ── */}
       {activeGlobalNotice && activeGlobalNotice.id !== dismissedNoticeId && (() => {
         const palette = {
-          info:    { bg: 'bg-blue-50 dark:bg-blue-950/40',    border: 'border-blue-200 dark:border-blue-800/80',    text: 'text-blue-900 dark:text-blue-100',    sub: 'text-blue-700 dark:text-blue-300/80',    icon: <Info className="w-5 h-5" />,          iconBg: 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400',  btn: 'bg-blue-600 hover:bg-blue-700' },
-          success: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800/80', text: 'text-emerald-900 dark:text-emerald-100', sub: 'text-emerald-700 dark:text-emerald-300/80', icon: <CheckCircle className="w-5 h-5" />,  iconBg: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400', btn: 'bg-emerald-600 hover:bg-emerald-700' },
-          warning: { bg: 'bg-amber-50 dark:bg-amber-950/40',   border: 'border-amber-200 dark:border-amber-800/80',   text: 'text-amber-900 dark:text-amber-100',   sub: 'text-amber-700 dark:text-amber-300/80',   icon: <AlertTriangle className="w-5 h-5" />, iconBg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400',   btn: 'bg-amber-600 hover:bg-amber-700' },
-          error:   { bg: 'bg-red-50 dark:bg-red-950/40',      border: 'border-red-200 dark:border-red-800/80',      text: 'text-red-900 dark:text-red-100',      sub: 'text-red-700 dark:text-red-300/80',      icon: <AlertOctagon className="w-5 h-5" />,  iconBg: 'bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400',       btn: 'bg-red-600 hover:bg-red-700' },
+          info: { bg: 'bg-blue-50 dark:bg-blue-950/40', border: 'border-blue-200 dark:border-blue-800/80', text: 'text-blue-900 dark:text-blue-100', sub: 'text-blue-700 dark:text-blue-300/80', icon: <Info className="w-5 h-5" />, iconBg: 'bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400', btn: 'bg-blue-600 hover:bg-blue-700' },
+          success: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', border: 'border-emerald-200 dark:border-emerald-800/80', text: 'text-emerald-900 dark:text-emerald-100', sub: 'text-emerald-700 dark:text-emerald-300/80', icon: <CheckCircle className="w-5 h-5" />, iconBg: 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400', btn: 'bg-emerald-600 hover:bg-emerald-700' },
+          warning: { bg: 'bg-amber-50 dark:bg-amber-950/40', border: 'border-amber-200 dark:border-amber-800/80', text: 'text-amber-900 dark:text-amber-100', sub: 'text-amber-700 dark:text-amber-300/80', icon: <AlertTriangle className="w-5 h-5" />, iconBg: 'bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-400', btn: 'bg-amber-600 hover:bg-amber-700' },
+          error: { bg: 'bg-red-50 dark:bg-red-950/40', border: 'border-red-200 dark:border-red-800/80', text: 'text-red-900 dark:text-red-100', sub: 'text-red-700 dark:text-red-300/80', icon: <AlertOctagon className="w-5 h-5" />, iconBg: 'bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400', btn: 'bg-red-600 hover:bg-red-700' },
         };
         const p = palette[activeGlobalNotice.type] || palette.info;
         return (
@@ -132,7 +132,7 @@ export const DashboardOverview: React.FC = () => {
                   Issued by {activeGlobalNotice.createdByName}
                   {activeGlobalNotice.expiresAt && ` · Expires ${new Date(activeGlobalNotice.expiresAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'short', timeStyle: 'short' })}`}
                 </span>
-                {user.role === 'admin' && (
+                {user?.role === 'admin' && (
                   <button
                     onClick={() => setCurrentPage('notifications')}
                     className={`text-[11px] font-semibold underline underline-offset-2 ${p.sub}`}
@@ -181,7 +181,7 @@ export const DashboardOverview: React.FC = () => {
       }
 
       {/* Pending Deletion Approval Banner (Admin Only) */}
-      {user.role === 'admin' && pendingDeletionCount > 0 && (
+      {user?.role === 'admin' && pendingDeletionCount > 0 && (
         <div className="p-4 rounded-2xl bg-rose-500/10 dark:bg-rose-950/50 border border-rose-500/30 dark:border-rose-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xs">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 shrink-0 shadow-2xs">

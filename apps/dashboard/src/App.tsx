@@ -2,20 +2,15 @@ import React from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
-import { SessionTimerProvider, useSessionTimer } from './context/SessionContext';
+import { SessionTimerProvider } from './context/SessionContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { Toast } from './components/common/Toast';
 import { CreateRequestModal } from './components/requests/CreateRequestModal';
 import { RequestDetailModal } from './components/requests/RequestDetailModal';
-import { AuthScreen } from './components/auth/AuthScreen';
-import { PendingApprovalScreen } from './components/auth/PendingApprovalScreen';
 import { EditProfileModal } from './components/profile/EditProfileModal';
 import { ThemeCustomizationModal } from './components/settings/ThemeCustomizationModal';
 import { BrandingModal } from './components/settings/BrandingModal';
-import { HomePage } from './components/home/HomePage';
-import { InvalidSessionModal } from './components/auth/InvalidSessionModal';
-import { SessionExpiryModal } from './components/auth/SessionExpiryModal';
 import { PageTransition } from './components/common/PageTransition';
 import { LoadingScreen } from './components/common/LoadingScreen';
 
@@ -125,7 +120,6 @@ const MainLayout: React.FC = () => {
       <EditProfileModal />
       <ThemeCustomizationModal />
       <BrandingModal />
-      <SessionExpiryModal />
       <Toast />
     </div>
   );
@@ -134,32 +128,15 @@ const MainLayout: React.FC = () => {
 const AppAuthGate: React.FC = () => {
   const { isAuthenticated, user, isInitialLoading } = useAuth();
 
-  // During initial loading (Supabase session restore from cookies), keep the
-  // loading screen visible — never flash the auth modal or AuthScreen in between.
+  // During initial loading, keep the loading screen visible while the session restores.
   if (isInitialLoading) {
     return <LoadingScreen label="Restoring session…" />;
   }
 
-  // If not signed in, gate the dashboard behind the invalid-session modal.
-  // The modal "pops" with "Sign In Again" (→ /auth) and "Go Home" (→ /) actions
-  // rather than dropping the user onto a full login screen unexpectedly.
   if (!isAuthenticated || !user) {
-    return (
-      <>
-        <InvalidSessionModal />
-        <Toast />
-      </>
-    );
-  }
-
-  // If user account is pending approval and user is not an administrator, show holding screen
-  if (user.status === 'pending' && user.role !== 'admin') {
-    return (
-      <>
-        <PendingApprovalScreen />
-        <Toast />
-      </>
-    );
+    const authBase = import.meta.env.VITE_AUTH_URL || 'https://auth.egraminservices.com';
+    window.location.replace(`${authBase}/login`);
+    return <LoadingScreen label="Redirecting to sign in..." />;
   }
 
   return <MainLayout />;
@@ -169,14 +146,8 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const pathname = location.pathname.replace(/^\/+/, '').toLowerCase();
 
-  // Home (public) page
   if (pathname === '' || pathname === 'home') {
-    return (
-      <>
-        <HomePage />
-        <Toast />
-      </>
-    );
+    return <AppAuthGate />;
   }
 
   // Auth screen — these routes now live on the authentication subdomain.
@@ -202,28 +173,28 @@ export default function App() {
       <SessionTimerProvider>
         <AppProvider>
           <Routes>
-          <Route path="/" element={<AppContent />} />
-          <Route path="/home" element={<AppContent />} />
-          <Route path="/auth" element={<AppContent />} />
-          <Route path="/login" element={<AppContent />} />
-          <Route path="/signin" element={<AppContent />} />
-          <Route path="/signup" element={<AppContent />} />
-          <Route path="/dashboard" element={<AppContent />} />
-          <Route path="/support" element={<AppContent />} />
-          <Route path="/holding" element={<AppContent />} />
-          <Route path="/all-requests" element={<AppContent />} />
-          <Route path="/assignments" element={<AppContent />} />
-          <Route path="/clients" element={<AppContent />} />
-          <Route path="/commissions" element={<AppContent />} />
+            <Route path="/" element={<AppContent />} />
+            <Route path="/home" element={<AppContent />} />
+            <Route path="/auth" element={<AppContent />} />
+            <Route path="/login" element={<AppContent />} />
+            <Route path="/signin" element={<AppContent />} />
+            <Route path="/signup" element={<AppContent />} />
+            <Route path="/dashboard" element={<AppContent />} />
+            <Route path="/support" element={<AppContent />} />
+            <Route path="/holding" element={<AppContent />} />
+            <Route path="/all-requests" element={<AppContent />} />
+            <Route path="/assignments" element={<AppContent />} />
+            <Route path="/clients" element={<AppContent />} />
+            <Route path="/commissions" element={<AppContent />} />
             <Route path="/transaction-types" element={<AppContent />} />
-          <Route path="/analytics" element={<AppContent />} />
-          <Route path="/rbac" element={<AppContent />} />
-          <Route path="/audit-logs" element={<AppContent />} />
-          <Route path="/notifications" element={<AppContent />} />
-          <Route path="/settings" element={<AppContent />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AppProvider>
+            <Route path="/analytics" element={<AppContent />} />
+            <Route path="/rbac" element={<AppContent />} />
+            <Route path="/audit-logs" element={<AppContent />} />
+            <Route path="/notifications" element={<AppContent />} />
+            <Route path="/settings" element={<AppContent />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AppProvider>
       </SessionTimerProvider>
     </AuthProvider>
   );

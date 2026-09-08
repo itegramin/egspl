@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { cookieStorageAdapter } from './cookieStorage';
+import { cookieStorageAdapter } from '@egspl/supabase';
 import { formatAmountInWords } from './indianCurrency';
 import type {
   Database,
